@@ -744,6 +744,7 @@ class Conv1D(Layer):
 
         return self._config_template.format(**params)
 
+
 class Conv2D(Layer):
     def initialize(self):
         shape = [self.attributes['out_height'], self.attributes['out_width'], self.attributes['n_filt']]
@@ -770,6 +771,48 @@ class Conv2D(Layer):
         params['nzeros'] = self.get_weights('weight').nzeros
 
         return self._config_template.format(**params)
+
+class GarNet(Layer):
+    def initialize(self):
+        shape = [self.attributes['out_height'], self.attributes['out_width']]
+        dims = ['OUT_HEIGHT_{}'.format(self.index),'OUT_WIDTH_{}'.format(self.index)]
+        self.add_output_variable(shape,dims)
+        self.add_weights()
+        self.add_bias()
+
+    def function_cpp(self):
+        params = self._default_function_params()
+        params['w'] = self.get_weights('weight').name
+        params['b'] = self.get_weights)('bias').name
+
+    def config_cpp(self):
+        params = self._default_config_params()
+        params['in_aggregators'] = self.get_input_variable().dim_names[0]
+        params['in_filters'] = self.get_input_variable().dim_names[1]
+        params['in_propogate'] = self.get_input_variable().dim_names[2]
+        params['out_height'] = self.get_output_variable().dim_names[0]
+        params['out_width'] = self.get_output_variable().dim_names[1]
+        params['nzeros'] = self.get_weights('weight').nzeros
+
+# class CreateZeroMask(Layer):
+#     def initialize(self):
+#         shape = []
+
+class ReduceMean(Layer):
+    def initialize(self):
+        shape = [self.attributes['n_out']]
+        dims = ['N_OUTPUTS_{}'.format(self.index)]
+        self.add_output_variable(shape,dims)
+
+    def function_cpp(self):
+        params=self._default_function_params()
+        return [self._function_template.format(**params)]
+
+    def config_cpp(self):
+        params = self._default_config_params()
+        params=['in_height'].get_input_variable().dim_names[0]
+        params=['in_width'].get_input_variable().dim_names[1]
+        params=['n_pit'].get_output_variable().dim_names[0]
 
 class Pooling1D(Layer):
     def initialize(self):
