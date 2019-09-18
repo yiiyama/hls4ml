@@ -63,6 +63,19 @@ conv2d_config_template = """struct config{index} : nnet::conv2d_config {{
     typedef {weight_t} weight_t;
 }};\n"""
 
+garnet_config_templpate = """struct config{index} :: nnet::garner_config {{
+    static const unsigned n_in_hits = {n_in_hits};
+    static const unsigned n_in_features = {n_in_features};
+    static const unsigned n_aggregators = {n_aggregators};
+    static const unsigned n_filters = {n_filters};
+    static const unsigned n_propagate = {n_propagate};
+    static const unsigned reuse_factor = {reuse_factor};
+    static const unsigned n_zeros = {n_zeros};
+    typedef {accum_t} accum_t;
+    typedef {bias_t} biast_t;
+    typedef {weight_t} weight_t;
+}};\n"""
+
 activ_config_template = """struct {type}_config{index} : nnet::activ_config {{
     static const unsigned n_in = {n_in};
     static const unsigned table_size = 1024;
