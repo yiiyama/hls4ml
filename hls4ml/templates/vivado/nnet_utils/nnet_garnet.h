@@ -81,7 +81,11 @@ void garnet(
   d1 = data[iv*CONFIG_T::n_in_features : (iv*CONFIG_T::n_in_features + CONFIG_T::n_in_features)];
   //r1 = data[iv*CONFIG_T::n_in_features : (iv*CONFIG_T::n_in_features + CONFIG_T::n_in_features)];
 
-  features[iv] = dense<data_T, res_T, garnet_input_feature_transform_config>(l1, r1, input_transform_weights, input_transform_biases);
+  dense<data_T, res_T, garnet_input_feature_transform_config>(l1, r1, input_transform_weights, input_transform_biases);
+  for(int ij =0; ij < CONFIG_T::n_propagate; ij++){
+    feature[iv*CONFIG_T::n_propagate + ij] = r1[ij];
+  }
+  // r1 has output make another loop to copy one by one
   }
 
 
@@ -93,7 +97,10 @@ void garnet(
     typename CONFIG_T::data_T d2[CONFIG_T::n_in_features];
     typename CONFIG_T::res_T r2[CONFIG_T::n_aggregators];
     d2 = data[iv*CONFIG_T::n_in_features : (iv*CONFIG_T::n_in_features + CONFIG_T::n_in_features)];
-  distance[iv] = dense<data_T, res_T, garnet_aggregator_distance_config>(d2, r2, aggregator_distance_weights, aggregator_distance_biases);
+  dense<data_T, res_T, garnet_aggregator_distance_config>(d2, r2, aggregator_distance_weights, aggregator_distance_biases);
+  for(int ij =0; ij < CONFIG_T::n_aggregators; ij++){
+    distance[iv*CONFIG_T::n_aggregators + ij] = r2[ij];
+  }
   }
 
 
@@ -101,8 +108,8 @@ void garnet(
   typename CONFIG_T::accum_t edge_weights[CONFIG_T::n_in_hits * CONFIG_T::n_aggregators];
 
   for (int iv=0; iv<CONFIG_T::n_in_hits; iv++){
-  for(int if=0; if<CONFIG_T::n_aggregators; if++){
-    edge_weights[if+(CONFIG_T::n_aggregators * iv)] = pow(2,-distance[if+(CONFIG_T::n_aggregators * iv)]);
+  for(int ij=0; ij<CONFIG_T::n_aggregators; ij++){
+    edge_weights[ij+(CONFIG_T::n_aggregators * iv)] = pow(2,-distance[ij+(CONFIG_T::n_aggregators * iv)]);
     }
   }
 
@@ -110,12 +117,12 @@ void garnet(
   typename CONFIG_T::accum_t new_feature[CONFIG_T::n_in_hits * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators)];
 
   for(int iv=0; iv<CONFIG_T::n_in_hits; iv++){
-    for(int if=0; if<(CONFIG_T::n_propagate + CONFIG_T::n_aggregators); if++){
-      if(if < CONFIG_T::n_propagate){
-        new_feature[(iv * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators)) + if] = features[(iv*CONFIG_T::n_propagate) + if];
+    for(int ij=0; ij<(CONFIG_T::n_propagate + CONFIG_T::n_aggregators); ij++){
+      if(ij < CONFIG_T::n_propagate){
+        new_feature[(iv * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators)) + ij] = features[(iv*CONFIG_T::n_propagate) + ij];
       }
       else{
-        new_feature[(iv * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators)) + if] = edge_weights[(iv*CONFIG_T::n_aggregators) + if - CONFIG_T::n_propagate];
+        new_feature[(iv * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators)) + ij] = edge_weights[(iv*CONFIG_T::n_aggregators) + ij - CONFIG_T::n_propagate];
       }
     }
   }
@@ -133,12 +140,12 @@ void garnet(
   flot max = 0;
   typename CONFIG_T:: accum_t common_agg[CONFIG_T::n_in_hits * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators) * CONFIG_T::n_aggregators];
   for(int iv=0; iv < CONFIG_T::n_in_hits; iv++){
-    for(int if=0; if < CONFIG_T::n_aggregators; if++){
+    for(int ij=0; ij < CONFIG_T::n_aggregators; ij++){
       for(int ia=0; ia < (CONFIG_T::n_propagate + CONFIG_T::n_aggregators); ia++){
-        agg_max[(iv*((CONFIG_T::n_propagate + CONFIG_T::n_aggregators) * CONFIG_T::n_aggregators)) + (if * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators)) + ia] = edge_weights[(iv*CONFIG_T::n_aggregators)+ia] * new_feature[(iv * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators)) + if];
-        mean +=  edge_weights[(iv*CONFIG_T::n_aggregators)+ia] * new_feature[(iv * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators)) + if];
-        if(max < (edge_weights[(iv*CONFIG_T::n_aggregators)+ia] * new_feature[(iv * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators)) + if])){
-          max = edge_weights[(iv*CONFIG_T::n_aggregators)+ia] * new_feature[(iv * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators)) + if];
+        agg_max[(iv*((CONFIG_T::n_propagate + CONFIG_T::n_aggregators) * CONFIG_T::n_aggregators)) + (ij * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators)) + ia] = edge_weights[(iv*CONFIG_T::n_aggregators)+ia] * new_feature[(iv * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators)) + ij];
+        mean +=  edge_weights[(iv*CONFIG_T::n_aggregators)+ia] * new_feature[(iv * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators)) + ij];
+        if(max < (edge_weights[(iv*CONFIG_T::n_aggregators)+ia] * new_feature[(iv * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators)) + ij])){
+          max = edge_weights[(iv*CONFIG_T::n_aggregators)+ia] * new_feature[(iv * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators)) + ij];
         }
       }
     }
@@ -149,8 +156,8 @@ void garnet(
   typename CONFIG_T::accum_t agg_max[(CONFIG_T::n_propagate + CONFIG_T::n_aggregators) * CONFIG_T::n_aggregators];
   for(int iv=0; iv < ((CONFIG_T::n_propagate + CONFIG_T::n_aggregators) * CONFIG_T::n_aggregators); iv++){
     float sum=0;
-    for (int if=0; if < CONFIG_T::n_in_hits; if++){
-      sum+= common_agg[if*((CONFIG_T::n_propagate + CONFIG_T::n_aggregators) * CONFIG_T::n_aggregators) + iv];
+    for (int ij=0; ij < CONFIG_T::n_in_hits; ij++){
+      sum+= common_agg[ij*((CONFIG_T::n_propagate + CONFIG_T::n_aggregators) * CONFIG_T::n_aggregators) + iv];
     }
     agg_max[iv] = sum/max;
   }
@@ -159,20 +166,20 @@ void garnet(
   typename CONFIG_T::accum_t agg_mean[(CONFIG_T::n_propagate + CONFIG_T::n_aggregators) * CONFIG_T::n_aggregators];
   for(int iv=0; iv < ((CONFIG_T::n_propagate + CONFIG_T::n_aggregators) * CONFIG_T::n_aggregators); iv++){
     float sum=0;
-    for (int if=0; if < CONFIG_T::n_in_hits; if++){
-      sum+= common_agg[if*((CONFIG_T::n_propagate + CONFIG_T::n_aggregators) * CONFIG_T::n_aggregators) + iv];
+    for (int ij=0; ij < CONFIG_T::n_in_hits; ij++){
+      sum+= common_agg[ij*((CONFIG_T::n_propagate + CONFIG_T::n_aggregators) * CONFIG_T::n_aggregators) + iv];
     }
     agg_mean[iv] = sum/mean;
   }
   //concant agg max and agg mean (B S 2*(F+S))
   typename CONFIG_T::accum_t agg_mean_max[2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate)];
   for(int iv=0; iv<CONFIG_T::n_aggregators; iv++){
-    for(int if=0; if<(2 * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators)); if++){
-      if(if < (CONFIG_T::n_propagate + CONFIG_T::n_aggregators)){
-        agg_mean_max[(iv * (2 * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators))) + if] = agg_max[(iv*CONFIG_T::n_propagate) + if];
+    for(int ij=0; ij<(2 * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators)); ij++){
+      if(ij < (CONFIG_T::n_propagate + CONFIG_T::n_aggregators)){
+        agg_mean_max[(iv * (2 * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators))) + ij] = agg_max[(iv*CONFIG_T::n_propagate) + ij];
       }
       else{
-        agg_mean_max[(iv * (2 * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators))) + if] = agg_mean[(iv*CONFIG_T::n_propagate) + if - (CONFIG_T::n_propagate+CONFIG_T::n_aggregators)];
+        agg_mean_max[(iv * (2 * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators))) + ij] = agg_mean[(iv*CONFIG_T::n_propagate) + ij - (CONFIG_T::n_propagate+CONFIG_T::n_aggregators)];
       }
     }
   }
@@ -180,23 +187,23 @@ void garnet(
   typename CONFIG_T::accum_t upd_features[CONFIG_T::n_in_hits * 2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate)];
   for(int iv=0; iv < CONFIG_T::n_in_hits; iv++){
     for(int ia=0; ia < CONFIG_T::n_aggregators; ia++){
-      for(int if =0; if < (2 * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate));if++){
-        upd_features[(iv*CONFIG_T::n_in_hits) + ((2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate)))] = agg_max_mean[ia*CONFIG_T::n_aggregators + if] * edge_weights[iv*CONFIG_T::n_aggregators + ia];
+      for(int ij =0; ij < (2 * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate));ij++){
+        upd_features[(iv*CONFIG_T::n_in_hits) + ((2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate)))] = agg_max_mean[ia*CONFIG_T::n_aggregators + ij] * edge_weights[iv*CONFIG_T::n_aggregators + ia];
       }
     }
   }
   //Concatenate x, updated feature and edge weight
   typename CONFIG_T::accum_t updated_features[CONFIG_T::n_in_hits * (n_in_features + (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate))+ CONFIG_T::n_aggregators)];
   for(int iv=0; iv< CONFIG_T::n_in_hits; iv++){
-      for(int if=0; if < (CONFIG_T::n_in_features + (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate) + CONFIG_T::n_aggregators);if++){
+      for(int ij=0; ij < (CONFIG_T::n_in_features + (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate) + CONFIG_T::n_aggregators);ij++){
         if( if < CONFIG_T::n_in_features){
-          updated_features[iv*(CONFIG_T::n_in_features + (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate))+ CONFIG_T::n_aggregators) + if] = data[(iv * CONFIG_T::n_in_features) + if];
+          updated_features[iv*(CONFIG_T::n_in_features + (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate))+ CONFIG_T::n_aggregators) + ij] = data[(iv * CONFIG_T::n_in_features) + ij];
         }
-        else if (if >= CONFIG_T::n_in_features && if < (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate) + CONFIG_T::n_aggregators)){
-          updated_features[iv*(CONFIG_T::n_in_features + (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate))+ CONFIG_T::n_aggregators) + if] = upd_features[(iv * 2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate)) + if - CONFIG_T::n_in_features];
+        else if (ij >= CONFIG_T::n_in_features && ij < (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate) + CONFIG_T::n_aggregators)){
+          updated_features[iv*(CONFIG_T::n_in_features + (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate))+ CONFIG_T::n_aggregators) + ij] = upd_features[(iv * 2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate)) + ij - CONFIG_T::n_in_features];
         }
         else{
-          updated_features[iv*(CONFIG_T::n_in_features + (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate))+ CONFIG_T::n_aggregators) + if] = edge_weights[(iv * CONFIG_T::n_aggregators) + if - CONFIG_T::n_in_features - ( 2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate))];
+          updated_features[iv*(CONFIG_T::n_in_features + (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate))+ CONFIG_T::n_aggregators) + ij] = edge_weights[(iv * CONFIG_T::n_aggregators) + ij - CONFIG_T::n_in_features - ( 2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate))];
         }
       }
   }
@@ -207,6 +214,7 @@ void garnet(
     typename CONFIG_T::res_T r3[CONFIG_T::n_filters];
     d3 = data[iv*(CONFIG_T::n_in_features + (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate))+ CONFIG_T::n_aggregators) : ((iv*(n_in_features + (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate))+ CONFIG_T::n_aggregators)) + (n_in_features + (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate))+ CONFIG_T::n_aggregators))];
   dense<data_T, res_T, garnet_output_feature_transform_config>(d3, r3, output_transform_weights, output_transform_biases);
+  
 }
 }
 
