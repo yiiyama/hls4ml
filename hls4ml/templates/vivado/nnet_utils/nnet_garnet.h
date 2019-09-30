@@ -64,8 +64,7 @@ void garnet(
     typename CONFIG_T::bias_t    input_transform_biases[CONFIG_T::n_in_hits * CONFIG_T::n_propagate],
     typename CONFIG_T::weight_t  aggregator_distance_weights[CONFIG_T::n_in_hits * CONFIG_T::n_in_features * CONFIG_T::n_aggregators],
     typename CONFIG_T::bias_t    aggregator_distance_biases[CONFIG_T::n_in_hits * CONFIG_T::n_aggregators],
-    typename CONFIG_T::weight_t  output_transform_weights[CONFIG_T::n_in_hits * (CONFIG::n_in_features + 2 * CONFIG_T::n_aggregators * (CONFIG::n_aggregators+CONFIG_T::n_propagate) + CONI
-  _T::n_aggregators) * n_filters],
+    typename CONFIG_T::weight_t  output_transform_weights[CONFIG_T::n_in_hits * (CONFIG_T::n_in_features + 2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators+CONFIG_T::n_propagate) + CONFIG_T::n_aggregators) * CONFIG_T:: n_filters],
     typename CONFIG_T::bias_t    output_transform_biases[CONFIG_T::n_in_hits * CONFIG_T::n_filters]
   )
 {
@@ -78,12 +77,15 @@ void garnet(
   // getting the features propogate
   typename CONFIG_T::data_T d1[CONFIG_T::n_in_features];
   typename CONFIG_T::res_T r1[CONFIG_T::n_propagate];
-  d1 = data[iv*CONFIG_T::n_in_features : (iv*CONFIG_T::n_in_features + CONFIG_T::n_in_features)];
+  //d1 = data[iv*CONFIG_T::n_in_features : (iv*CONFIG_T::n_in_features + CONFIG_T::n_in_features)];
   //r1 = data[iv*CONFIG_T::n_in_features : (iv*CONFIG_T::n_in_features + CONFIG_T::n_in_features)];
+  for(int ij =0; ij < CONFIG_T::n_in_features ; ij++){
 
-  dense<data_T, res_T, garnet_input_feature_transform_config>(l1, r1, input_transform_weights, input_transform_biases);
+  	d1[ij] = data[iv*CONFIG_T::n_in_features + ij];	
+  }
+  dense_latency<data_T, res_T, CONFIG_T>(d1, r1, input_transform_weights, input_transform_biases);
   for(int ij =0; ij < CONFIG_T::n_propagate; ij++){
-    feature[iv*CONFIG_T::n_propagate + ij] = r1[ij];
+    features[iv*CONFIG_T::n_propagate + ij] = r1[ij];
   }
   // r1 has output make another loop to copy one by one
   }
@@ -96,8 +98,11 @@ void garnet(
     //getting distance
     typename CONFIG_T::data_T d2[CONFIG_T::n_in_features];
     typename CONFIG_T::res_T r2[CONFIG_T::n_aggregators];
-    d2 = data[iv*CONFIG_T::n_in_features : (iv*CONFIG_T::n_in_features + CONFIG_T::n_in_features)];
-  dense<data_T, res_T, garnet_aggregator_distance_config>(d2, r2, aggregator_distance_weights, aggregator_distance_biases);
+    //d2 = data[iv*CONFIG_T::n_in_features : (iv*CONFIG_T::n_in_features + CONFIG_T::n_in_features)];
+    for(int ij = 0; ij< CONFIG_T::n_in_features ; ij++){
+    d2[ij]=data[iv*CONFIG_T::n_in_features + ij];
+    }
+  dense_latency<data_T, res_T, CONFIG_T>(d2, r2, aggregator_distance_weights, aggregator_distance_biases);
   for(int ij =0; ij < CONFIG_T::n_aggregators; ij++){
     distance[iv*CONFIG_T::n_aggregators + ij] = r2[ij];
   }
@@ -137,12 +142,12 @@ void garnet(
 
   //not necessary lets see
   float mean=0;
-  flot max = 0;
+  float max = 0;
   typename CONFIG_T:: accum_t common_agg[CONFIG_T::n_in_hits * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators) * CONFIG_T::n_aggregators];
   for(int iv=0; iv < CONFIG_T::n_in_hits; iv++){
     for(int ij=0; ij < CONFIG_T::n_aggregators; ij++){
       for(int ia=0; ia < (CONFIG_T::n_propagate + CONFIG_T::n_aggregators); ia++){
-        agg_max[(iv*((CONFIG_T::n_propagate + CONFIG_T::n_aggregators) * CONFIG_T::n_aggregators)) + (ij * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators)) + ia] = edge_weights[(iv*CONFIG_T::n_aggregators)+ia] * new_feature[(iv * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators)) + ij];
+        common_agg[(iv*((CONFIG_T::n_propagate + CONFIG_T::n_aggregators) * CONFIG_T::n_aggregators)) + (ij * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators)) + ia] = edge_weights[(iv*CONFIG_T::n_aggregators)+ia] * new_feature[(iv * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators)) + ij];
         mean +=  edge_weights[(iv*CONFIG_T::n_aggregators)+ia] * new_feature[(iv * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators)) + ij];
         if(max < (edge_weights[(iv*CONFIG_T::n_aggregators)+ia] * new_feature[(iv * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators)) + ij])){
           max = edge_weights[(iv*CONFIG_T::n_aggregators)+ia] * new_feature[(iv * (CONFIG_T::n_propagate + CONFIG_T::n_aggregators)) + ij];
@@ -188,15 +193,15 @@ void garnet(
   for(int iv=0; iv < CONFIG_T::n_in_hits; iv++){
     for(int ia=0; ia < CONFIG_T::n_aggregators; ia++){
       for(int ij =0; ij < (2 * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate));ij++){
-        upd_features[(iv*CONFIG_T::n_in_hits) + ((2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate)))] = agg_max_mean[ia*CONFIG_T::n_aggregators + ij] * edge_weights[iv*CONFIG_T::n_aggregators + ia];
+        upd_features[(iv*CONFIG_T::n_in_hits) + ((2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate)))] = agg_mean_max[ia*CONFIG_T::n_aggregators + ij] * edge_weights[iv*CONFIG_T::n_aggregators + ia];
       }
     }
   }
   //Concatenate x, updated feature and edge weight
-  typename CONFIG_T::accum_t updated_features[CONFIG_T::n_in_hits * (n_in_features + (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate))+ CONFIG_T::n_aggregators)];
+  typename CONFIG_T::accum_t updated_features[CONFIG_T::n_in_hits * (CONFIG_T::n_in_features + (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate))+ CONFIG_T::n_aggregators)];
   for(int iv=0; iv< CONFIG_T::n_in_hits; iv++){
-      for(int ij=0; ij < (CONFIG_T::n_in_features + (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate) + CONFIG_T::n_aggregators);ij++){
-        if( if < CONFIG_T::n_in_features){
+      for(int ij=0; ij < (CONFIG_T::n_in_features + (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate) + CONFIG_T::n_aggregators));ij++){
+        if( ij < CONFIG_T::n_in_features){
           updated_features[iv*(CONFIG_T::n_in_features + (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate))+ CONFIG_T::n_aggregators) + ij] = data[(iv * CONFIG_T::n_in_features) + ij];
         }
         else if (ij >= CONFIG_T::n_in_features && ij < (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate) + CONFIG_T::n_aggregators)){
@@ -209,11 +214,14 @@ void garnet(
   }
 
   // updated features to dense
-  for(int iv=0; iv<CONFIG::n_in_hits; iv++){
-    typename CONFIG_T::data_T d3[CONFIG_T::n_in_features + (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate))+ CONFIG_T::n_aggregators)];
+  for(int iv=0; iv<CONFIG_T::n_in_hits; iv++){
+    typename CONFIG_T::data_T d3[CONFIG_T::n_in_features + (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate))+ CONFIG_T::n_aggregators];
     typename CONFIG_T::res_T r3[CONFIG_T::n_filters];
-    d3 = data[iv*(CONFIG_T::n_in_features + (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate))+ CONFIG_T::n_aggregators) : ((iv*(n_in_features + (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate))+ CONFIG_T::n_aggregators)) + (n_in_features + (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate))+ CONFIG_T::n_aggregators))];
-  dense<data_T, res_T, garnet_output_feature_transform_config>(d3, r3, output_transform_weights, output_transform_biases);
+    for(int ij = 0 ; ij < (CONFIG_T::n_in_featues + (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propogate))+CONFIG_T::n_aggregators ); ij++ ){
+    d3[ij] = updated_features[iv*(CONFIG_T::n_in_features + (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate)) + CONFIG_T::n_aggregators) + ij];
+    }
+    //d3 = data[(iv*(CONFIG_T::n_in_features + (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate))+ CONFIG_T::n_aggregators)) : ((iv*(CONFIG_T:n_in_features + (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate))+ CONFIG_T::n_aggregators)) + (n_in_features + (2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators + CONFIG_T::n_propagate))+ CONFIG_T::n_aggregators))];
+  dense_latency<data_T, res_T, CONFIG_T>(d3, r3, output_transform_weights, output_transform_biases);
   
 }
 }
