@@ -774,45 +774,48 @@ class Conv2D(Layer):
 
 class GarNet(Layer):
     def initialize(self):
-        shape = [self.attributes['out_height'], self.attributes['out_width']]
-        dims = ['OUT_HEIGHT_{}'.format(self.index),'OUT_WIDTH_{}'.format(self.index)]
+        shape = [self.attributes['n_vertices'], self.attributes['n_filters']]
+        dims = ['VERTICES_{}'.format(self.index),'OUT_FEATURES_{}'.format(self.index)]
         self.add_output_variable(shape,dims)
-        self.add_weights()
-        self.add_bias()
+        for dense_name in ['input_transform', 'aggregator_distance', 'output_transform']:
+            data = self.model.get_weights_data(self.name, '%s_kernel' % dense_name)
+            self.add_weights_variable(name=('%s_weights' % dense_name), var_name=('%s_weights{index}' % dense_name), data=data, quantize=0, compression=False)
+
+            data = self.model.get_weights_data(self.name, '%s_biases' % dense_name)
+            precision = None
+            type_name = None
+            if data is None:
+                data = np.zeros(self.get_output_variable().shape[-1])
+                precision = 'ap_uint<1>'
+                type_name = 'biases{index}_t'
+                quantize = 0 # Don't quantize non-existant bias
+
+            self.add_weights_variable(name=('%s_biases' % dense_name), var_name=('%s_b{index}' % dense_name), type_name=type_name, precision=precision, data=data, quantize=quantize)
 
     def function_cpp(self):
         params = self._default_function_params()
-        params['w'] = self.get_weights('weight').name
-        params['b'] = self.get_weights)('bias').name
+        for dense_name in ['input_transform', 'aggregator_distance', 'output_transform']:
+            params['%s_weights' % dense_name] = self.get_weights('%s_weights' % dense_name).name
+            params['%s_biases' % dense_name] = self.get_weights('%s_biases' % dense_name).name
 
-    def config_cpp(self):
-        params = self._default_config_params()
-        params['in_aggregators'] = self.get_input_variable().dim_names[0]
-        params['in_filters'] = self.get_input_variable().dim_names[1]
-        params['in_propogate'] = self.get_input_variable().dim_names[2]
-        params['out_height'] = self.get_output_variable().dim_names[0]
-        params['out_width'] = self.get_output_variable().dim_names[1]
-        params['nzeros'] = self.get_weights('weight').nzeros
-
-# class CreateZeroMask(Layer):
-#     def initialize(self):
-#         shape = []
-
-class ReduceMean(Layer):
-    def initialize(self):
-        shape = [self.attributes['n_out']]
-        dims = ['N_OUTPUTS_{}'.format(self.index)]
-        self.add_output_variable(shape,dims)
-
-    def function_cpp(self):
-        params=self._default_function_params()
         return [self._function_template.format(**params)]
 
     def config_cpp(self):
         params = self._default_config_params()
-        params=['in_height'].get_input_variable().dim_names[0]
-        params=['in_width'].get_input_variable().dim_names[1]
-        params=['n_pit'].get_output_variable().dim_names[0]
+        params['n_vertices'] = self.get_input_variable().dim_names[0]
+        params['n_in_features'] = self.get_input_variable().dim_names[1]
+        params['n_aggregators'] = self.get_weights('aggregator_distance_biases').size_cpp()
+        params['n_filters'] = self.get_weights('output_transform_biases').size_cpp()
+        params['n_propogate'] = self.get_weights('input_transform_biases').size_cpp()
+        params['nzeros'] = 0
+        params['nonzeros'] = 0
+        for d in ['input_transform', 'aggregator_distance', 'output_transform']:
+            params['nzeros_%s' % d] = self.get_weights('%s_weights' % d).nzeros
+            params['nonzeros_%s' % d] = self.get_weights('%s_weights' % d).nonzeros
+            params['nzeros'] += self.get_weights('%s_weights' % d).nzeros
+            params['nonzeros_%s' % d] += self.get_weights('%s_weights' % d).nonzeros
+
+        return self._config_template.format(**params)
 
 class Pooling1D(Layer):
     def initialize(self):
@@ -1012,6 +1015,7 @@ layer_map = {
     'AveragePooling2D'   : Pooling2D,
     'Merge'              : Merge,
     'Concatenate'        : Concatenate,
+    'GarNet'             : GarNet
 }
 
 def register_layer(name, clazz):

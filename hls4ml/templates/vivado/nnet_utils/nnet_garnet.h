@@ -47,19 +47,28 @@ struct garnet_config
   static const bool store_weights_in_bram = false;
   static const unsigned n_zeros = 0;
 
-  struct input_transform_config : public dense_config {
-    static const unsigned n_in = 4; // n_in_features
-    static const unsigned n_out = 4; // n_propagate
+  struct input_transform_config : dense_config {
+    static const unsigned n_in = n_in_features;
+    static const unsigned n_out = n_propagate;
+    static const unsigned io_type = garnet_config::io_type;
+    static const unsigned reuse_factor = garnet_config::reuse_factor;
+    static const bool store_weights_in_bram = garnet_config::store_weights_in_bram;
   };
 
-  struct aggregator_distance_config : public dense_config {
-    static const unsigned n_in = 4; // n_in_features
-    static const unsigned n_out = 4; // n_aggregators
+  struct aggregator_distance_config : dense_config {
+    static const unsigned n_in = n_in_features;
+    static const unsigned n_out = n_aggregators;
+    static const unsigned io_type = garnet_config::io_type;
+    static const unsigned reuse_factor = garnet_config::reuse_factor;
+    static const bool store_weights_in_bram = garnet_config::store_weights_in_bram;
   };
 
-  struct output_transform_config : public dense_config {
-    static const unsigned n_in = 72; // 2 * n_aggregators * (n_propagate + n_aggregators) + n_in_features + n_aggregators
-    static const unsigned n_out = 4; // n_filters
+  struct output_transform_config : dense_config {
+    static const unsigned n_in = 2 * n_aggregators * (n_propagate + n_aggregators) + n_in_features + n_aggregators;
+    static const unsigned n_out = n_filters;
+    static const unsigned io_type = garnet_config::io_type;
+    static const unsigned reuse_factor = garnet_config::reuse_factor;
+    static const bool store_weights_in_bram = garnet_config::store_weights_in_bram;
   };
 };
 

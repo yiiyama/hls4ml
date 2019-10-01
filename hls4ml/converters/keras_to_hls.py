@@ -60,7 +60,8 @@ def keras_to_hls(yamlConfig):
     norm_layers = ['BatchNormalization']
     activation_layers = ['Activation', 'LeakyReLU', 'ThresholdedReLU', 'ELU', 'PReLU']
     merge_layers = ['Add', 'Subtract', 'Multiply', 'Average', 'Maximum', 'Minimum', 'Concatenate']
-    supported_layers = core_layers + conv_layers + pooling_layers + norm_layers + activation_layers + merge_layers
+    graph_layers = ['GarNet']
+    supported_layers = core_layers + conv_layers + pooling_layers + norm_layers + activation_layers + merge_layers + graph_layers
 
     #Define layers to skip for conversion to HLS
     skip_layers = ['Dropout', 'Flatten']
@@ -312,6 +313,14 @@ def keras_to_hls(yamlConfig):
                 layer['class_name'] = 'Merge'
             if len(layer['inputs']) > 2:
                 raise Exception('ERROR: Merging more than two tensors is not yet supported.')
+
+        elif layer['class_name'] == 'GarNet':
+            layer['n_vertices'] = current_shape[1]
+            layer['n_in_features'] = current_shape[2]
+            layer['n_aggregators'] = keras_layer['config']['n_aggregators']
+            layer['n_filters'] = keras_layer['config']['n_filters'] # number of output features
+            layer['n_propagate'] = keras_layer['config']['n_propagate'] # number of latent features
+            current_shape = current_shape[:1] + [layer['n_filters']]
 
         print('Layer name: {}, layer type: {}, current shape: {}'.format(layer['name'], layer['class_name'], current_shape))
         layer_list.append( layer )
