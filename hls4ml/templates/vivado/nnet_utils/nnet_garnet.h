@@ -118,8 +118,8 @@ void garnet(
     dense_latency<data_T, res_T, typename CONFIG_T::aggregator_distance_config>(
         data + iv * nfeat,
         vertex_edge_weights,
-        aggregator_edge_weights_weights,
-        aggregator_edge_weights_biases);
+        aggregator_distance_weights,
+        aggregator_distance_biases);
 
     for (int ia=0; ia<naggr; ia++){
       vertex_edge_weights[ia] = pow(2, -vertex_edge_weights[ia]);
