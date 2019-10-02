@@ -783,6 +783,7 @@ class GarNet(Layer):
 
             data = self.model.get_weights_data(self.name, '%s/bias%s:0' % (self.name, suffix))
             precision = None
+            quantize = 0
             type_name = None
             if data is None:
                 data = np.zeros(self.get_output_variable().shape[-1])
@@ -804,9 +805,9 @@ class GarNet(Layer):
         params = self._default_config_params()
         params['n_vertices'] = self.get_input_variable().dim_names[0]
         params['n_in_features'] = self.get_input_variable().dim_names[1]
-        params['n_aggregators'] = self.get_weights('aggregator_distance_biases').size_cpp()
-        params['n_filters'] = self.get_weights('output_transform_biases').size_cpp()
-        params['n_propogate'] = self.get_weights('input_transform_biases').size_cpp()
+        params['n_aggregators'] = self.get_weights('aggregator_distance_biases').shape[0]
+        params['n_filters'] = self.get_weights('output_transform_biases').shape[0]
+        params['n_propogate'] = self.get_weights('input_transform_biases').shape[0]
         params['nzeros'] = 0
         params['nonzeros'] = 0
         for d in ['input_transform', 'aggregator_distance', 'output_transform']:

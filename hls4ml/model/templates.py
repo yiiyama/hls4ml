@@ -127,7 +127,7 @@ config_templates = {
     'Concatenate'            : concat_config_template,
 }
 
-garnet_config_templpate = """struct config{index} : nnet::garnet_config {{
+garnet_config_template = """struct config{index} : nnet::garnet_config {{
     static const unsigned n_vertices = {n_vertices};
     static const unsigned n_in_features = {n_in_features};
     static const unsigned n_aggregators = {n_aggregators};
@@ -137,8 +137,12 @@ garnet_config_templpate = """struct config{index} : nnet::garnet_config {{
     static const unsigned reuse_factor = {reuse};
     static const bool store_weights_in_bram = false;
     typedef {accum_t} accum_t;
-    typedef {bias_t} bias_t;
-    typedef {weight_t} weight_t;
+    typedef {input_transform_biases_t} input_transform_biases_t;
+    typedef {input_transform_weights_t} input_transform_weights_t;
+    typedef {aggregator_distance_weights_t} aggregator_distance_weights_t;
+    typedef {aggregator_distance_biases_t} aggregator_distance_biases_t;
+    typedef {output_transform_weights_t} output_transform_weights_t;
+    typedef {output_transform_biases_t} output_transform_biases_t;
 
     struct input_transform_config{index} : nnet::dense_config {{
         static const unsigned n_in = {n_in_features};
@@ -149,9 +153,8 @@ garnet_config_templpate = """struct config{index} : nnet::garnet_config {{
         static const unsigned n_nonzeros = {nonzeros_input_transform};
         static const bool store_weights_in_bram = false;
         typedef {accum_t} accum_t;
-        typedef {bias_t} bias_t;
-        typedef {weight_t} weight_t;
-        typedef {index_t} index_t;
+        typedef {input_transform_biases_t} input_transform_biases_t;
+        typedef {input_transform_weights_t} input_tranform_weights_t;
     }};
 
     struct aggregator_distance_config{index} : nnet::dense_config {{
@@ -163,9 +166,8 @@ garnet_config_templpate = """struct config{index} : nnet::garnet_config {{
         static const unsigned n_nonzeros = {nonzeros_aggregator_distance};
         static const bool store_weights_in_bram = false;
         typedef {accum_t} accum_t;
-        typedef {bias_t} bias_t;
-        typedef {weight_t} weight_t;
-        typedef {index_t} index_t;
+        typedef {aggregator_distance_biases_t} aggregator_distance_biases_t;
+        typedef {aggregator_distance_weights_t} aggregator_distance_weights_t;
     }};
 
     struct output_transform_config{index} : nnet::dense_config {{
@@ -177,12 +179,11 @@ garnet_config_templpate = """struct config{index} : nnet::garnet_config {{
         static const unsigned n_nonzeros = {nonzeros_output_transform};
         static const bool store_weights_in_bram = false;
         typedef {accum_t} accum_t;
-        typedef {bias_t} bias_t;
-        typedef {weight_t} weight_t;
-        typedef {index_t} index_t;
+        typedef {output_transform_biases_t} output_transform_biases_t;
+        typedef {output_transform_weights_t} output_transform_weights_t;
+        
     }};
-}};\n
-"""
+}};\n"""
 
 config_templates['GarNet'] = garnet_config_template
 

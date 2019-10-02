@@ -30,8 +30,14 @@ namespace nnet {
 struct garnet_config
 {
   // Internal data type definitions
-  typedef float bias_t;
-  typedef float weight_t;
+  //typedef float bias_t;
+  typedef float input_transform_weights_t;
+  typedef float input_transform_biases_t;
+  typedef float output_transform_weights_t;
+  typedef float output_tranform_biases_t;
+  typedef float aggregator_distance_weights_t;
+  typedef float aggregator_distance_biases_t;
+
   typedef float accum_t;
 
   // Layer specs
@@ -42,7 +48,7 @@ struct garnet_config
   static const unsigned n_propagate = 4;
 
   // Resource reuse info
-  static const unsigned io_type = io_parallel;
+  //static const unsigned io_type = io_parallel;
   static const unsigned reuse_factor = 1;
   static const bool store_weights_in_bram = false;
   static const unsigned n_zeros = 0;
@@ -50,7 +56,7 @@ struct garnet_config
   struct input_transform_config : dense_config {
     static const unsigned n_in = n_in_features;
     static const unsigned n_out = n_propagate;
-    static const unsigned io_type = garnet_config::io_type;
+   // static const unsigned io_type = garnet_config::io_type;
     static const unsigned reuse_factor = garnet_config::reuse_factor;
     static const bool store_weights_in_bram = garnet_config::store_weights_in_bram;
   };
@@ -58,7 +64,7 @@ struct garnet_config
   struct aggregator_distance_config : dense_config {
     static const unsigned n_in = n_in_features;
     static const unsigned n_out = n_aggregators;
-    static const unsigned io_type = garnet_config::io_type;
+   // static const unsigned io_type = garnet_config::io_type;
     static const unsigned reuse_factor = garnet_config::reuse_factor;
     static const bool store_weights_in_bram = garnet_config::store_weights_in_bram;
   };
@@ -66,7 +72,7 @@ struct garnet_config
   struct output_transform_config : dense_config {
     static const unsigned n_in = 2 * n_aggregators * (n_propagate + n_aggregators) + n_in_features + n_aggregators;
     static const unsigned n_out = n_filters;
-    static const unsigned io_type = garnet_config::io_type;
+   // static const unsigned io_type = garnet_config::io_type;
     static const unsigned reuse_factor = garnet_config::reuse_factor;
     static const bool store_weights_in_bram = garnet_config::store_weights_in_bram;
   };
@@ -76,12 +82,12 @@ template<class data_T, class res_T, typename CONFIG_T>
 void garnet(
     data_T    data[CONFIG_T::n_vertices * CONFIG_T::n_in_features],
     res_T     res[CONFIG_T::n_vertices * CONFIG_T::n_filters],
-    typename CONFIG_T::weight_t  input_transform_weights[CONFIG_T::n_vertices * CONFIG_T::n_in_features * CONFIG_T::n_propagate],
-    typename CONFIG_T::bias_t    input_transform_biases[CONFIG_T::n_vertices * CONFIG_T::n_propagate],
-    typename CONFIG_T::weight_t  aggregator_distance_weights[CONFIG_T::n_vertices * CONFIG_T::n_in_features * CONFIG_T::n_aggregators],
-    typename CONFIG_T::bias_t    aggregator_distance_biases[CONFIG_T::n_vertices * CONFIG_T::n_aggregators],
-    typename CONFIG_T::weight_t  output_transform_weights[CONFIG_T::n_vertices * (CONFIG_T::n_in_features + 2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators+CONFIG_T::n_propagate) + CONFIG_T::n_aggregators) * CONFIG_T:: n_filters],
-    typename CONFIG_T::bias_t    output_transform_biases[CONFIG_T::n_vertices * CONFIG_T::n_filters])
+    typename CONFIG_T::input_transform_weights_t  input_transform_weights[CONFIG_T::n_in_features * CONFIG_T::n_propagate],
+    typename CONFIG_T::input_transform_biases_t    input_transform_biases[CONFIG_T::n_propagate],
+    typename CONFIG_T::aggregator_distance_weights_t  aggregator_distance_weights[CONFIG_T::n_in_features * CONFIG_T::n_aggregators],
+    typename CONFIG_T::aggregator_distance_biases_t    aggregator_distance_biases[CONFIG_T::n_aggregators],
+    typename CONFIG_T::output_transform_weights_t  output_transform_weights[(CONFIG_T::n_in_features + 2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators+CONFIG_T::n_propagate) + CONFIG_T::n_aggregators) * CONFIG_T:: n_filters],
+    typename CONFIG_T::output_transform_biases_t    output_transform_biases[CONFIG_T::n_filters])
 {
   // just to make the code a bit more readable - can replace all later if we need to
   unsigned const nvtx = CONFIG_T::n_vertices;
