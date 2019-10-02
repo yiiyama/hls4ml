@@ -19,6 +19,9 @@ class KerasDataReader:
                 return name
 
         with h5py.File(self.config['KerasH5'], 'r') as h5file:
+            if 'model_weights' in h5file:
+                h5file = h5file['model_weights']
+
             found_data = h5file[layer_name].visit(h5_visitor_func)
             if found_data:
                 data = h5file['/{}/{}'.format(layer_name,found_data)][()]
@@ -33,6 +36,9 @@ def get_weights_shape(h5filename, layer_name, var_name='kernel'):
             return name
 
     with h5py.File(h5filename, 'r') as h5file:
+        if 'model_weights' in h5file:
+            h5file = h5file['model_weights']
+
         found_data = h5file[layer_name].visit(h5_visitor_func)
         if found_data:
             shape = h5file['/{}/{}'.format(layer_name,found_data)].shape
@@ -320,7 +326,7 @@ def keras_to_hls(yamlConfig):
             layer['n_aggregators'] = keras_layer['config']['n_aggregators']
             layer['n_filters'] = keras_layer['config']['n_filters'] # number of output features
             layer['n_propagate'] = keras_layer['config']['n_propagate'] # number of latent features
-            current_shape = current_shape[:1] + [layer['n_filters']]
+            current_shape = current_shape[:2] + [layer['n_filters']]
 
         print('Layer name: {}, layer type: {}, current shape: {}'.format(layer['name'], layer['class_name'], current_shape))
         layer_list.append( layer )

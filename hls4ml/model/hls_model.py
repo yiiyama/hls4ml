@@ -777,11 +777,11 @@ class GarNet(Layer):
         shape = [self.attributes['n_vertices'], self.attributes['n_filters']]
         dims = ['VERTICES_{}'.format(self.index),'OUT_FEATURES_{}'.format(self.index)]
         self.add_output_variable(shape,dims)
-        for dense_name in ['input_transform', 'aggregator_distance', 'output_transform']:
-            data = self.model.get_weights_data(self.name, '%s_kernel' % dense_name)
+        for dense_name, suffix in [('input_transform', ''), ('aggregator_distance', '_1'), ('output_transform', '_2')]:
+            data = self.model.get_weights_data(self.name, '%s/kernel%s:0' % (self.name, suffix))
             self.add_weights_variable(name=('%s_weights' % dense_name), var_name=('%s_weights{index}' % dense_name), data=data, quantize=0, compression=False)
 
-            data = self.model.get_weights_data(self.name, '%s_biases' % dense_name)
+            data = self.model.get_weights_data(self.name, '%s/bias%s:0' % (self.name, suffix))
             precision = None
             type_name = None
             if data is None:
