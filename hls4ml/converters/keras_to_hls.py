@@ -19,9 +19,12 @@ class KerasDataReader:
                 return name
 
         with h5py.File(self.config['KerasH5'], 'r') as h5file:
+            if 'model_weights' in h5file:
+                h5file = h5file['model_weights']
+
             found_data = h5file[layer_name].visit(h5_visitor_func)
             if found_data:
-                data = h5file['/{}/{}'.format(layer_name,found_data)][()]
+                data = h5file['{}/{}'.format(layer_name,found_data)][()]
             else:
                 data = None
 
@@ -33,9 +36,20 @@ def get_weights_shape(h5filename, layer_name, var_name='kernel'):
             return name
 
     with h5py.File(h5filename, 'r') as h5file:
+        print('here 1', h5file)
+        if 'model_weights' in h5file:
+            h5file = h5file['model_weights']
+        print(list(h5file.keys()))
+        print('here 2', h5file)
+        print('here 3', layer_name)
         found_data = h5file[layer_name].visit(h5_visitor_func)
+        #print(h5file['/{}'.format(layer_name)])
+        #print('here 4', h5filei)
+        print(found_data)
+        #print(h5file[layer_name,found_data])
         if found_data:
-            shape = h5file['/{}/{}'.format(layer_name,found_data)].shape
+            shape = h5file['{}/{}'.format(layer_name,found_data)].shape
+            print('shape',shape)
 
     return shape
 
@@ -60,7 +74,8 @@ def keras_to_hls(yamlConfig):
     norm_layers = ['BatchNormalization']
     activation_layers = ['Activation', 'LeakyReLU', 'ThresholdedReLU', 'ELU', 'PReLU']
     merge_layers = ['Add', 'Subtract', 'Multiply', 'Average', 'Maximum', 'Minimum', 'Concatenate']
-    supported_layers = core_layers + conv_layers + pooling_layers + norm_layers + activation_layers + merge_layers
+    graph_layers = ['GarNet']
+    supported_layers = core_layers + conv_layers + pooling_layers + norm_layers + activation_layers + merge_layers + graph_layers
 
     #Define layers to skip for conversion to HLS
     skip_layers = ['Dropout', 'Flatten']
@@ -312,6 +327,14 @@ def keras_to_hls(yamlConfig):
                 layer['class_name'] = 'Merge'
             if len(layer['inputs']) > 2:
                 raise Exception('ERROR: Merging more than two tensors is not yet supported.')
+
+        elif layer['class_name'] == 'GarNet':
+            layer['n_vertices'] = current_shape[1]
+            layer['n_in_features'] = current_shape[2]
+            layer['n_aggregators'] = keras_layer['config']['n_aggregators']
+            layer['n_filters'] = keras_layer['config']['n_filters'] # number of output features
+            layer['n_propagate'] = keras_layer['config']['n_propagate'] # number of latent features
+            current_shape = current_shape[:2] + [layer['n_filters']]
 
         print('Layer name: {}, layer type: {}, current shape: {}'.format(layer['name'], layer['class_name'], current_shape))
         layer_list.append( layer )

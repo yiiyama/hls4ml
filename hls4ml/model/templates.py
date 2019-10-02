@@ -63,19 +63,6 @@ conv2d_config_template = """struct config{index} : nnet::conv2d_config {{
     typedef {weight_t} weight_t;
 }};\n"""
 
-garnet_config_templpate = """struct config{index} :: nnet::garner_config {{
-    static const unsigned n_in_hits = {n_in_hits};
-    static const unsigned n_in_features = {n_in_features};
-    static const unsigned n_aggregators = {n_aggregators};
-    static const unsigned n_filters = {n_filters};
-    static const unsigned n_propagate = {n_propagate};
-    static const unsigned reuse_factor = {reuse_factor};
-    static const unsigned n_zeros = {n_zeros};
-    typedef {accum_t} accum_t;
-    typedef {bias_t} biast_t;
-    typedef {weight_t} weight_t;
-}};\n"""
-
 activ_config_template = """struct {type}_config{index} : nnet::activ_config {{
     static const unsigned n_in = {n_in};
     static const unsigned table_size = 1024;
@@ -140,6 +127,66 @@ config_templates = {
     'Concatenate'            : concat_config_template,
 }
 
+garnet_config_template = """struct config{index} : nnet::garnet_config {{
+    static const unsigned n_vertices = {n_vertices};
+    static const unsigned n_in_features = {n_in_features};
+    static const unsigned n_aggregators = {n_aggregators};
+    static const unsigned n_filters = {n_filters};
+    static const unsigned n_propagate = {n_propagate};
+    static const unsigned io_type = {iotype};
+    static const unsigned reuse_factor = {reuse};
+    static const bool store_weights_in_bram = false;
+    typedef {accum_t} accum_t;
+    typedef {input_transform_biases_t} input_transform_biases_t;
+    typedef {input_transform_weights_t} input_transform_weights_t;
+    typedef {aggregator_distance_weights_t} aggregator_distance_weights_t;
+    typedef {aggregator_distance_biases_t} aggregator_distance_biases_t;
+    typedef {output_transform_weights_t} output_transform_weights_t;
+    typedef {output_transform_biases_t} output_transform_biases_t;
+
+    struct input_transform_config{index} : nnet::dense_config {{
+        static const unsigned n_in = {n_in_features};
+        static const unsigned n_out = {n_propagate};
+        static const unsigned io_type = nnet::{iotype};
+        static const unsigned reuse_factor = {reuse};
+        static const unsigned n_zeros = {nzeros_input_transform};
+        static const unsigned n_nonzeros = {nonzeros_input_transform};
+        static const bool store_weights_in_bram = false;
+        typedef {accum_t} accum_t;
+        typedef {input_transform_biases_t} input_transform_biases_t;
+        typedef {input_transform_weights_t} input_tranform_weights_t;
+    }};
+
+    struct aggregator_distance_config{index} : nnet::dense_config {{
+        static const unsigned n_in = {n_in_features};
+        static const unsigned n_out = {n_aggregators};
+        static const unsigned io_type = nnet::{iotype};
+        static const unsigned reuse_factor = {reuse};
+        static const unsigned n_zeros = {nzeros_aggregator_distance};
+        static const unsigned n_nonzeros = {nonzeros_aggregator_distance};
+        static const bool store_weights_in_bram = false;
+        typedef {accum_t} accum_t;
+        typedef {aggregator_distance_biases_t} aggregator_distance_biases_t;
+        typedef {aggregator_distance_weights_t} aggregator_distance_weights_t;
+    }};
+
+    struct output_transform_config{index} : nnet::dense_config {{
+        static const unsigned n_in = 2 * {n_aggregators} * ({n_propagate} + {n_aggregators}) + {n_in_features} + {n_aggregators};
+        static const unsigned n_out = {n_filters};
+        static const unsigned io_type = nnet::{iotype};
+        static const unsigned reuse_factor = {reuse};
+        static const unsigned n_zeros = {nzeros_output_transform};
+        static const unsigned n_nonzeros = {nonzeros_output_transform};
+        static const bool store_weights_in_bram = false;
+        typedef {accum_t} accum_t;
+        typedef {output_transform_biases_t} output_transform_biases_t;
+        typedef {output_transform_weights_t} output_transform_weights_t;
+        
+    }};
+}};\n"""
+
+config_templates['GarNet'] = garnet_config_template
+
 dense_function_template = 'nnet::dense_{strategy}<{input_t}, {output_t}, {config}>({input}, {output}, {w}, {b});'
 batchnorm_function_template = 'nnet::normalize<{input_t}, {output_t}, {config}>({input}, {output}, {scale}, {bias});'
 conv1d_function_template = 'nnet::conv_1d<{input_t}, {output_t}, {config}>({input}, {output}, {w}, {b});'
@@ -164,6 +211,9 @@ function_templates = {
     'Merge'                  : merge_function_template,
     'Concatenate'            : merge_function_template,
 }
+
+garnet_function_template = 'nnet::garnet<{input_t}, {output_t}, {config}>({input}, {output}, {input_transform_weights}, {input_transform_biases}, {aggregator_distance_weights}, {aggregator_distance_biases}, {output_transform_weights}, {output_transform_biases});'
+function_templates['GarNet'] = garnet_function_template
 
 def get_config_template(kind):
     return config_templates.get(kind)
