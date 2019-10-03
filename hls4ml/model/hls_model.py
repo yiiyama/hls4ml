@@ -779,7 +779,7 @@ class GarNet(Layer):
         self.add_output_variable(shape,dims)
         for dense_name, suffix in [('input_transform', ''), ('aggregator_distance', '_1'), ('output_transform', '_2')]:
             data = self.model.get_weights_data(self.name, '%s/kernel%s:0' % (self.name, suffix))
-            self.add_weights_variable(name=('%s_weights' % dense_name), var_name=('%s_weights{index}' % dense_name), data=data, quantize=0, compression=False)
+            self.add_weights_variable(name=('%s_weights' % dense_name), var_name=('%s_weights' % dense_name), data=data, quantize=0, compression=False) #weight index
 
             data = self.model.get_weights_data(self.name, '%s/bias%s:0' % (self.name, suffix))
             precision = None

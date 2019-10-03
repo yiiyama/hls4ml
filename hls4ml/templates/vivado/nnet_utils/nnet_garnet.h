@@ -23,7 +23,7 @@
 #include "nnet_common.h"
 #include "nnet_dense.h"
 #include "hls_stream.h"
-#include <math.h>
+#include <cmath>
 
 namespace nnet {
 
@@ -128,7 +128,7 @@ void garnet(
         aggregator_distance_biases);
 
     for (int ia=0; ia<naggr; ia++){
-      vertex_edge_weights[ia] = pow(2, -vertex_edge_weights[ia]);
+      vertex_edge_weights[ia] = std::pow(2., -vertex_edge_weights[ia]);
     }
 
     // aggregate
@@ -138,14 +138,20 @@ void garnet(
         // mean
         aggregated[ia * nlatent + ip] += features[ip] * vertex_edge_weights[ia];
         // max
-        aggregated[(naggr + ia) * nlatent + ip] = max(aggregated[(naggr + ia) * nlatent + ip], features[ip] * vertex_edge_weights[ia]);
+	if(aggregated[(naggr + ia) * nlatent + ip] < (features[ip] * vertex_edge_weights[ia])){
+		aggregated[(naggr + ia) * nlatent + ip] = features[ip] * vertex_edge_weights[ia]; 
+	}
+        //aggregated[(naggr + ia) * nlatent + ip] = max(aggregated[(naggr + ia) * nlatent + ip], features[ip] * vertex_edge_weights[ia]);
       }
       // see above - do we really need to concatenate vertex_edge_weights to features?
       for (int iw=0; iw<naggr; iw++){
         // mean
         aggregated[ia * nlatent + nprop + iw] += vertex_edge_weights[iw] * vertex_edge_weights[ia];
         // max
-        aggregated[(naggr + ia) * nlatent + nprop + iw] = max(aggregated[(naggr + ia) * nlatent + nprop + iw], vertex_edge_weights[iw] * vertex_edge_weights[ia]);
+	if(aggregated[(naggr + ia) * nlatent + nprop + iw] < (vertex_edge_weights[iw] * vertex_edge_weights[ia])){
+	
+        aggregated[(naggr + ia) * nlatent + nprop + iw] =  vertex_edge_weights[iw] * vertex_edge_weights[ia];
+	}
       }
     }
   }
