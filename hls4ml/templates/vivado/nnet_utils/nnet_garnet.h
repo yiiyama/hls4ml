@@ -70,7 +70,7 @@ struct garnet_config
   };
 
   struct output_transform_config : dense_config {
-    static const unsigned n_in = 2 * n_aggregators * (n_propagate + n_aggregators) + n_in_features + n_aggregators;
+    static const unsigned n_in =  n_aggregators * (n_propagate) + n_aggregators;
     static const unsigned n_out = n_filters;
    // static const unsigned io_type = garnet_config::io_type;
     static const unsigned reuse_factor = garnet_config::reuse_factor;
@@ -86,7 +86,7 @@ void garnet(
     typename CONFIG_T::input_transform_biases_t    input_transform_biases[CONFIG_T::n_propagate],
     typename CONFIG_T::aggregator_distance_weights_t  aggregator_distance_weights[CONFIG_T::n_in_features * CONFIG_T::n_aggregators],
     typename CONFIG_T::aggregator_distance_biases_t    aggregator_distance_biases[CONFIG_T::n_aggregators],
-    typename CONFIG_T::output_transform_weights_t  output_transform_weights[(CONFIG_T::n_in_features + 2 * CONFIG_T::n_aggregators * (CONFIG_T::n_aggregators+CONFIG_T::n_propagate) + CONFIG_T::n_aggregators) * CONFIG_T:: n_filters],
+    typename CONFIG_T::output_transform_weights_t  output_transform_weights[(CONFIG_T::n_in_features +  CONFIG_T::n_aggregators * (CONFIG_T::n_propagate) + CONFIG_T::n_aggregators) * CONFIG_T:: n_filters],
     typename CONFIG_T::output_transform_biases_t    output_transform_biases[CONFIG_T::n_filters])
 {
   // just to make the code a bit more readable - can replace all later if we need to
@@ -95,17 +95,17 @@ void garnet(
   unsigned const nprop = CONFIG_T::n_propagate;
   unsigned const naggr = CONFIG_T::n_aggregators;
   unsigned const nfilt = CONFIG_T::n_filters;
-  unsigned const nlatent = nprop + naggr;
+  unsigned const nlatent = nprop;
 
   // compute features and edge weights per vertex and save onto the aggregator array
   // should the aggregator get all nlatent values or just nprop? - Abhijay is checking
   // should we do mean and max (factor 2)? - Abhijay checking
-  typename CONFIG_T::accum_t aggregated[2 * naggr * nlatent];
+  typename CONFIG_T::accum_t aggregated[naggr * nlatent];
 
   for (int ia=0; ia<naggr; ia++){
     for (int il=0; il<nlatent; il++){
       aggregated[ia * nlatent + il] = 0.;
-      aggregated[(naggr + ia) * nlatent + il] = 0.; // no need if we use just mean
+      //aggregated[(naggr + ia) * nlatent + il] = 0.; // no need if we use just mean
     }
   }
 
@@ -138,21 +138,21 @@ void garnet(
         // mean
         aggregated[ia * nlatent + ip] += features[ip] * vertex_edge_weights[ia];
         // max
-	if(aggregated[(naggr + ia) * nlatent + ip] < (features[ip] * vertex_edge_weights[ia])){
-		aggregated[(naggr + ia) * nlatent + ip] = features[ip] * vertex_edge_weights[ia]; 
-	}
+	//if(aggregated[(naggr + ia) * nlatent + ip] < (features[ip] * vertex_edge_weights[ia])){
+//		aggregated[(naggr + ia) * nlatent + ip] = features[ip] * vertex_edge_weights[ia]; 
+//	}
         //aggregated[(naggr + ia) * nlatent + ip] = max(aggregated[(naggr + ia) * nlatent + ip], features[ip] * vertex_edge_weights[ia]);
       }
       // see above - do we really need to concatenate vertex_edge_weights to features?
-      for (int iw=0; iw<naggr; iw++){
+     // for (int iw=0; iw<naggr; iw++){
         // mean
-        aggregated[ia * nlatent + nprop + iw] += vertex_edge_weights[iw] * vertex_edge_weights[ia];
+       // aggregated[ia * nlatent + nprop + iw] += vertex_edge_weights[iw] * vertex_edge_weights[ia];
         // max
-	if(aggregated[(naggr + ia) * nlatent + nprop + iw] < (vertex_edge_weights[iw] * vertex_edge_weights[ia])){
+//	if(aggregated[(naggr + ia) * nlatent + nprop + iw] < (vertex_edge_weights[iw] * vertex_edge_weights[ia])){
 	
-        aggregated[(naggr + ia) * nlatent + nprop + iw] =  vertex_edge_weights[iw] * vertex_edge_weights[ia];
-	}
-      }
+  //      aggregated[(naggr + ia) * nlatent + nprop + iw] =  vertex_edge_weights[iw] * vertex_edge_weights[ia];
+//	}
+     // }
     }
   }
 
@@ -164,7 +164,7 @@ void garnet(
 
   for(int iv=0; iv<nvtx; iv++){
     // do we really need to concatenate all this?
-    typename CONFIG_T::accum_t updated_features[2 * naggr * nlatent + nfeat + naggr];
+    typename CONFIG_T::accum_t updated_features[naggr * nlatent +  naggr];
     typename CONFIG_T::accum_t* vertex_edge_weights = edge_weights + iv * naggr;
 
     // return to vertices
@@ -172,18 +172,12 @@ void garnet(
       for (int ip=0; ip<nprop; ip++){
         updated_features[ia * nlatent + ip] = aggregated[ia * nlatent + ip] * vertex_edge_weights[ia];
       }
-      // see above - do we really need to concatenate edge_weights to features?
-      for (int iw=0; iw<naggr; iw++){
-        updated_features[(naggr + ia) * nlatent + nprop + iw] = aggregated[(naggr + ia) * nlatent + nprop + iw] * vertex_edge_weights[ia];
-      }
+      
     }
 
     // additional stuff to concatenate
-    for (int ii=0; ii<nfeat; ii++){
-      updated_features[2 * naggr * nlatent + ii] = data[ii];
-    }
     for (int ia=0; ia<naggr; ia++){
-      updated_features[2 * naggr * nlatent + nfeat + ia] = vertex_edge_weights[ia];
+      updated_features[ naggr * nlatent + ia] = vertex_edge_weights[ia];
     }
     
     dense_latency<data_T, res_T, typename CONFIG_T::output_transform_config>(
