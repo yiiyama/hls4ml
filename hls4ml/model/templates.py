@@ -169,7 +169,8 @@ garnet_config_template = """struct config{index} : nnet::garnet_config {{
     }};
 
     struct output_transform_config : nnet::dense_config {{
-        static const unsigned n_in = 2 * {n_aggregators} * ({n_propagate} + {n_aggregators}) + {n_in_features} + {n_aggregators};
+        // static const unsigned n_in = 2 * {n_aggregators} * ({n_propagate} + {n_aggregators}) + {n_in_features} + {n_aggregators};
+        static const unsigned n_in = {n_aggregators} * {n_propagate};
         static const unsigned n_out = {n_filters};
         static const unsigned reuse_factor = {reuse};
         static const unsigned n_zeros = {nzeros_output_transform};
