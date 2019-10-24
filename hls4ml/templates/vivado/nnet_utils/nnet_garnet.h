@@ -21,10 +21,11 @@
 #define NNET_GARNET_H_
 
 #include "nnet_common.h"
-#include "nnet_dense.h"
+//#include "nnet_dense.h"
 #include "hls_stream.h"
+#include "hls_math.h"
 #include <cmath>
-
+//#include <math.h>
 namespace nnet {
 
 struct garnet_config
@@ -70,7 +71,8 @@ struct garnet_config
   };
 
   struct output_transform_config : dense_config {
-    static const unsigned n_in =  n_aggregators * (n_propagate) + n_aggregators;
+    //static const unsigned n_in =  n_aggregators * (n_propagate) + n_aggregators;
+    static const unsigned n_in =  n_aggregators * (n_propagate);
     static const unsigned n_out = n_filters;
    // static const unsigned io_type = garnet_config::io_type;
     static const unsigned reuse_factor = garnet_config::reuse_factor;
@@ -86,7 +88,7 @@ void garnet(
     typename CONFIG_T::input_transform_biases_t    input_transform_biases[CONFIG_T::n_propagate],
     typename CONFIG_T::aggregator_distance_weights_t  aggregator_distance_weights[CONFIG_T::n_in_features * CONFIG_T::n_aggregators],
     typename CONFIG_T::aggregator_distance_biases_t    aggregator_distance_biases[CONFIG_T::n_aggregators],
-    typename CONFIG_T::output_transform_weights_t  output_transform_weights[(CONFIG_T::n_in_features +  CONFIG_T::n_aggregators * (CONFIG_T::n_propagate) + CONFIG_T::n_aggregators) * CONFIG_T:: n_filters],
+    typename CONFIG_T::output_transform_weights_t  output_transform_weights[( CONFIG_T::n_aggregators * CONFIG_T::n_propagate) * CONFIG_T:: n_filters],
     typename CONFIG_T::output_transform_biases_t    output_transform_biases[CONFIG_T::n_filters])
 {
   // just to make the code a bit more readable - can replace all later if we need to
@@ -110,31 +112,50 @@ void garnet(
   }
 
   typename CONFIG_T::accum_t edge_weights[nvtx * naggr];
+  typename CONFIG_T::accum_t cache;
+  typename CONFIG_T::accum_t features[nprop];
 
-  for(int iv=0; iv<nvtx; iv++){
-    typename CONFIG_T::accum_t features[nprop];
+  Vertices1: for(int iv=0; iv<nvtx; iv++){
     typename CONFIG_T::accum_t* vertex_edge_weights = edge_weights + iv * naggr;
-    
-    dense_latency<data_T, res_T, typename CONFIG_T::input_transform_config>(
-        data + iv * nfeat,
-        features,
-        input_transform_weights,
-        input_transform_biases);
 
-    dense_latency<data_T, res_T, typename CONFIG_T::aggregator_distance_config>(
-        data + iv * nfeat,
-        vertex_edge_weights,
-        aggregator_distance_weights,
-        aggregator_distance_biases);
+    // dense_latency<data_T, res_T, typename CONFIG_T::input_transform_config>(
+    //     data + iv * nfeat,
+    //     features,
+    //     input_transform_weights,
+    //     input_transform_biases);
 
-    for (int ia=0; ia<naggr; ia++){
-      vertex_edge_weights[ia] = std::pow(2., -vertex_edge_weights[ia]);
+    InputTransformOuter: for (int iout = 0; iout < nprop; iout++) {
+      cache = input_transform_biases[iout];
+      InputTransformInner: for (int iin = 0; iin < nfeat; iin++) {
+        cache += input_transform_weights[iout * nfeat + iin] * data[iv * nfeat + iin];
+      }
+      features[iout] = cache;
     }
+    
+    // dense_latency<data_T, res_T, typename CONFIG_T::aggregator_distance_config>(
+    //     data + iv * nfeat,
+    //     vertex_edge_weights,
+    //     aggregator_distance_weights,
+    //     aggregator_distance_biases);
+
+    AggregatorDistanceOuter: for (int iout = 0; iout < naggr; iout++) {
+      cache = aggregator_distance_biases[iout];
+      AggregatorDistanceInner: for (int iin = 0; iin < nfeat; iin++) {
+        cache += aggregator_distance_weights[iout * nfeat + iin] * data[iv * nfeat + iin];
+      }
+      vertex_edge_weights[iout] = std::exp2f(-cache);
+     // vertex_edge_weights[iout] = std::pow(2,-cache);
+    }
+
+    // for (int ia=0; ia<naggr; ia++){
+    //   vertex_edge_weights[ia] = std::pow(2., -vertex_edge_weights[ia]);
+    // }
+
 
     // aggregate
 
-    for (int ia=0; ia<naggr; ia++){
-      for (int ip=0; ip<nprop; ip++){
+    AggregatorAccumOut: for (int ia=0; ia<naggr; ia++){
+      AggregatorAccumIn: for (int ip=0; ip<nprop; ip++){
         // mean
         aggregated[ia * nlatent + ip] += features[ip] * vertex_edge_weights[ia];
         // max
@@ -156,35 +177,45 @@ void garnet(
     }
   }
 
-  for (int ia=0; ia<naggr; ia++){
-    for (int il=0; il<nlatent; il++){
+  AggregatorMeanOut: for (int ia=0; ia<naggr; ia++){
+    AggregatorMeanLatent: for (int il=0; il<nlatent; il++){
       aggregated[ia * nlatent + il] /= nvtx;
     }
   }
 
-  for(int iv=0; iv<nvtx; iv++){
+  // typename CONFIG_T::accum_t updated_features[naggr * nlatent +  naggr];
+  typename CONFIG_T::accum_t updated_features[naggr * nlatent];
+
+  Vertices2: for(int iv=0; iv<nvtx; iv++){
     // do we really need to concatenate all this?
-    typename CONFIG_T::accum_t updated_features[naggr * nlatent +  naggr];
     typename CONFIG_T::accum_t* vertex_edge_weights = edge_weights + iv * naggr;
 
     // return to vertices
-    for (int ia=0; ia<naggr; ia++){
-      for (int ip=0; ip<nprop; ip++){
+    FeatureReturnAggr: for (int ia=0; ia<naggr; ia++){
+      FeatureReturnProp: for (int ip=0; ip<nlatent; ip++){
         updated_features[ia * nlatent + ip] = aggregated[ia * nlatent + ip] * vertex_edge_weights[ia];
       }
-      
     }
 
-    // additional stuff to concatenate
-    for (int ia=0; ia<naggr; ia++){
-      updated_features[ naggr * nlatent + ia] = vertex_edge_weights[ia];
-    }
+    // // additional stuff to concatenate
+    // for (int ia=0; ia<naggr; ia++){
+    //   updated_features[ naggr * nlatent + ia] = vertex_edge_weights[ia];
+    // }
     
-    dense_latency<data_T, res_T, typename CONFIG_T::output_transform_config>(
-        updated_features,
-        res + iv * nfilt,
-        output_transform_weights,
-        output_transform_biases);
+    // dense_latency<data_T, res_T, typename CONFIG_T::output_transform_config>(
+    //     updated_features,
+    //     res + iv * nfilt,
+    //     output_transform_weights,
+    //     output_transform_biases);
+
+    OutputTransformOuter: for (int iout = 0; iout < nfilt; iout++) {
+      cache = output_transform_biases[iout];
+      OutputTransformInner: for (int iin = 0; iin < naggr * nlatent; iin++) {
+        cache += output_transform_weights[iout * (naggr * nlatent) + iin] * updated_features[iin];
+      }
+      res[iv * nfilt + iout] = cache;
+    }
+
   }
 }
 
