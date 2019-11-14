@@ -25,7 +25,7 @@
 #include "hls_stream.h"
 #include "hls_math.h"
 #include <cmath>
-
+//#include <math.h>
 namespace nnet {
 
 struct garnet_config
@@ -88,7 +88,7 @@ void garnet(
     typename CONFIG_T::input_transform_biases_t    input_transform_biases[CONFIG_T::n_propagate],
     typename CONFIG_T::aggregator_distance_weights_t  aggregator_distance_weights[CONFIG_T::n_in_features * CONFIG_T::n_aggregators],
     typename CONFIG_T::aggregator_distance_biases_t    aggregator_distance_biases[CONFIG_T::n_aggregators],
-    typename CONFIG_T::output_transform_weights_t  output_transform_weights[(CONFIG_T::n_in_features +  CONFIG_T::n_aggregators * (CONFIG_T::n_propagate) + CONFIG_T::n_aggregators) * CONFIG_T:: n_filters],
+    typename CONFIG_T::output_transform_weights_t  output_transform_weights[( CONFIG_T::n_aggregators * CONFIG_T::n_propagate) * CONFIG_T:: n_filters],
     typename CONFIG_T::output_transform_biases_t    output_transform_biases[CONFIG_T::n_filters])
 {
   // just to make the code a bit more readable - can replace all later if we need to
@@ -139,11 +139,11 @@ void garnet(
     //     aggregator_distance_biases);
 
     AggregatorDistanceOuter: for (int iout = 0; iout < naggr; iout++) {
-      cache = aggregator_distance_biases[iout]
+      cache = aggregator_distance_biases[iout];
       AggregatorDistanceInner: for (int iin = 0; iin < nfeat; iin++) {
         cache += aggregator_distance_weights[iout * nfeat + iin] * data[iv * nfeat + iin];
       }
-      vertex_edge_weights[iout] = exp2(-cache);
+      vertex_edge_weights[iout] = std::exp2f(-cache);
     }
 
     // for (int ia=0; ia<naggr; ia++){
