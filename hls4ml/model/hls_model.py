@@ -774,9 +774,15 @@ class Conv2D(Layer):
 
 class GarNet(Layer):
     def initialize(self):
-        shape = [self.attributes['n_vertices'], self.attributes['n_filters']]
-        dims = ['VERTICES_{}'.format(self.index),'OUT_FEATURES_{}'.format(self.index)]
-        self.add_output_variable(shape,dims)
+        if self.attributes['collapse']:
+            shape = [self.attributes['n_filters']]
+            dims = ['OUT_FEATURES_{}'.format(self.index)]
+        else:
+            shape = [self.attributes['n_vertices'], self.attributes['n_filters']]
+            dims = ['VERTICES_{}'.format(self.index),'OUT_FEATURES_{}'.format(self.index)]
+
+        self.add_output_variable(shape, dims)
+
         for dense_name, suffix in [('input_transform', ''), ('aggregator_distance', '_1'), ('output_transform', '_2')]:
             data = self.model.get_weights_data(self.name, '%s/kernel%s:0' % (self.name, suffix))
             self.add_weights_variable(name=('%s_weights' % dense_name), var_name=('%s_weights' % dense_name), data=data, quantize=0, compression=False) #weight index
@@ -795,6 +801,7 @@ class GarNet(Layer):
 
     def function_cpp(self):
         params = self._default_function_params()
+        params['nvtx'] = self.get_input_variable(self.inputs[1]).name
         for dense_name in ['input_transform', 'aggregator_distance', 'output_transform']:
             params['%s_weights' % dense_name] = self.get_weights('%s_weights' % dense_name).name
             params['%s_biases' % dense_name] = self.get_weights('%s_biases' % dense_name).name
@@ -808,13 +815,10 @@ class GarNet(Layer):
         params['n_aggregators'] = self.get_weights('aggregator_distance_biases').shape[0]
         params['n_filters'] = self.get_weights('output_transform_biases').shape[0]
         params['n_propogate'] = self.get_weights('input_transform_biases').shape[0]
-        params['nzeros'] = 0
-        params['nonzeros'] = 0
-        for d in ['input_transform', 'aggregator_distance', 'output_transform']:
-            params['nzeros_%s' % d] = self.get_weights('%s_weights' % d).nzeros
-            params['nonzeros_%s' % d] = self.get_weights('%s_weights' % d).nonzeros
-            params['nzeros'] += self.get_weights('%s_weights' % d).nzeros
-            params['nonzeros_%s' % d] += self.get_weights('%s_weights' % d).nonzeros
+        if self.attributes['collapse'] == 'mean':
+            params['collapse_def'] = '#define GARNET_COLLAPSE 1'
+        else:
+            params['collapse_def'] = ''
 
         return self._config_template.format(**params)
 

@@ -20,26 +20,36 @@
 #ifndef NNET_GARNET_H_
 #define NNET_GARNET_H_
 
+#define GARNET_COLLAPSE 1
+
 #include "nnet_common.h"
-//#include "nnet_dense.h"
 #include "hls_stream.h"
 #include "hls_math.h"
-#include <cmath>
-//#include <math.h>
+
 namespace nnet {
+
+template<class CONFIG_T>
+inline typename CONFIG_T::edge_weight_t
+compute_garnet_edge_weight(typename CONFIG_T::accum_t distance)
+{
+  typename CONFIG_T::edge_weight_t edge_weight = 1.;
+  return edge_weight >> static_cast<int>(distance);
+}
 
 struct garnet_config
 {
   // Internal data type definitions
-  //typedef float bias_t;
   typedef float input_transform_weights_t;
   typedef float input_transform_biases_t;
   typedef float output_transform_weights_t;
-  typedef float output_tranform_biases_t;
+  typedef float output_transform_biases_t;
   typedef float aggregator_distance_weights_t;
   typedef float aggregator_distance_biases_t;
 
   typedef float accum_t;
+  typedef ap_fixed<64, 60> edge_weight_t;
+
+  typedef unsigned short index_t;
 
   // Layer specs
   static const unsigned n_vertices = 250;
@@ -47,175 +57,170 @@ struct garnet_config
   static const unsigned n_aggregators = 4;
   static const unsigned n_filters = 4;
   static const unsigned n_propagate = 4;
-
-  // Resource reuse info
-  //static const unsigned io_type = io_parallel;
-  static const unsigned reuse_factor = 1;
-  static const bool store_weights_in_bram = false;
-  static const unsigned n_zeros = 0;
-
-  struct input_transform_config : dense_config {
-    static const unsigned n_in = n_in_features;
-    static const unsigned n_out = n_propagate;
-   // static const unsigned io_type = garnet_config::io_type;
-    static const unsigned reuse_factor = garnet_config::reuse_factor;
-    static const bool store_weights_in_bram = garnet_config::store_weights_in_bram;
-  };
-
-  struct aggregator_distance_config : dense_config {
-    static const unsigned n_in = n_in_features;
-    static const unsigned n_out = n_aggregators;
-   // static const unsigned io_type = garnet_config::io_type;
-    static const unsigned reuse_factor = garnet_config::reuse_factor;
-    static const bool store_weights_in_bram = garnet_config::store_weights_in_bram;
-  };
-
-  struct output_transform_config : dense_config {
-    //static const unsigned n_in =  n_aggregators * (n_propagate) + n_aggregators;
-    static const unsigned n_in =  n_aggregators * (n_propagate);
-    static const unsigned n_out = n_filters;
-   // static const unsigned io_type = garnet_config::io_type;
-    static const unsigned reuse_factor = garnet_config::reuse_factor;
-    static const bool store_weights_in_bram = garnet_config::store_weights_in_bram;
-  };
 };
 
 template<class data_T, class res_T, typename CONFIG_T>
 void garnet(
-    data_T    data[CONFIG_T::n_vertices * CONFIG_T::n_in_features],
-    res_T     res[CONFIG_T::n_vertices * CONFIG_T::n_filters],
-    typename CONFIG_T::input_transform_weights_t  input_transform_weights[CONFIG_T::n_in_features * CONFIG_T::n_propagate],
-    typename CONFIG_T::input_transform_biases_t    input_transform_biases[CONFIG_T::n_propagate],
-    typename CONFIG_T::aggregator_distance_weights_t  aggregator_distance_weights[CONFIG_T::n_in_features * CONFIG_T::n_aggregators],
-    typename CONFIG_T::aggregator_distance_biases_t    aggregator_distance_biases[CONFIG_T::n_aggregators],
-    typename CONFIG_T::output_transform_weights_t  output_transform_weights[( CONFIG_T::n_aggregators * CONFIG_T::n_propagate) * CONFIG_T:: n_filters],
-    typename CONFIG_T::output_transform_biases_t    output_transform_biases[CONFIG_T::n_filters])
+    data_T data[CONFIG_T::n_vertices * CONFIG_T::n_in_features],
+    data_T nvtx[1],
+#ifdef GARNET_COLLAPSE
+    res_T res[CONFIG_T::n_filters],
+#else
+    res_T res[CONFIG_T::n_vertices * CONFIG_T::n_filters],
+#endif
+    typename CONFIG_T::input_transform_weights_t input_transform_weights[CONFIG_T::n_in_features * CONFIG_T::n_propagate],
+    typename CONFIG_T::input_transform_biases_t input_transform_biases[CONFIG_T::n_propagate],
+    typename CONFIG_T::aggregator_distance_weights_t aggregator_distance_weights[CONFIG_T::n_in_features * CONFIG_T::n_aggregators],
+    typename CONFIG_T::aggregator_distance_biases_t aggregator_distance_biases[CONFIG_T::n_aggregators],
+    typename CONFIG_T::output_transform_weights_t output_transform_weights[CONFIG_T::n_aggregators * CONFIG_T::n_propagate * CONFIG_T::n_filters],
+    typename CONFIG_T::output_transform_biases_t output_transform_biases[CONFIG_T::n_filters]
+)
 {
-  // just to make the code a bit more readable - can replace all later if we need to
-  unsigned const nvtx = CONFIG_T::n_vertices;
-  unsigned const nfeat = CONFIG_T::n_in_features;
-  unsigned const nprop = CONFIG_T::n_propagate;
-  unsigned const naggr = CONFIG_T::n_aggregators;
-  unsigned const nfilt = CONFIG_T::n_filters;
-  unsigned const nlatent = nprop;
+  typename CONFIG_T::index_t const n_latent = CONFIG_T::n_aggregators * CONFIG_T::n_propagate;
+  typename CONFIG_T::accum_t const vnorm = 1. / CONFIG_T::n_vertices;
 
-  // compute features and edge weights per vertex and save onto the aggregator array
-  // should the aggregator get all nlatent values or just nprop? - Abhijay is checking
-  // should we do mean and max (factor 2)? - Abhijay checking
-  typename CONFIG_T::accum_t aggregated[naggr * nlatent];
-
-  for (int ia=0; ia<naggr; ia++){
-    for (int il=0; il<nlatent; il++){
-      aggregated[ia * nlatent + il] = 0.;
-      //aggregated[(naggr + ia) * nlatent + il] = 0.; // no need if we use just mean
-    }
+#ifdef GARNET_COLLAPSE
+  typename CONFIG_T::accum_t edge_weight_sums[CONFIG_T::n_aggregators];
+#else
+  typename CONFIG_T::accum_t edge_weights[CONFIG_T::n_vertices * CONFIG_T::n_aggregators];
+#endif
+  typename CONFIG_T::accum_t aggregation_sum[n_latent];
+  
+#ifdef GARNET_COLLAPSE
+ EdgeWeightSumInit:
+  for (unsigned ia = 0; ia < CONFIG_T::n_aggregators; ++ia) {
+    #pragma HLS UNROLL
+    edge_weight_sums[ia] = 0.;
   }
+#endif
 
-  typename CONFIG_T::accum_t edge_weights[nvtx * naggr];
-  typename CONFIG_T::accum_t cache;
-  typename CONFIG_T::accum_t features[nprop];
-
-  Vertices1: for(int iv=0; iv<nvtx; iv++){
-    typename CONFIG_T::accum_t* vertex_edge_weights = edge_weights + iv * naggr;
-
-    // dense_latency<data_T, res_T, typename CONFIG_T::input_transform_config>(
-    //     data + iv * nfeat,
-    //     features,
-    //     input_transform_weights,
-    //     input_transform_biases);
-
-    InputTransformOuter: for (int iout = 0; iout < nprop; iout++) {
-      cache = input_transform_biases[iout];
-      InputTransformInner: for (int iin = 0; iin < nfeat; iin++) {
-        cache += input_transform_weights[iout * nfeat + iin] * data[iv * nfeat + iin];
+ Vertices:
+  for (unsigned iv = 0; iv < CONFIG_T::n_vertices; ++iv) {
+    if (iv < nvtx[0]) {
+      typename CONFIG_T::index_t vertex_offset = iv * CONFIG_T::n_in_features;
+  
+      #pragma HLS EXPRESSION_BALANCE
+      typename CONFIG_T::accum_t aggregator_distances[CONFIG_T::n_aggregators];
+      typename CONFIG_T::accum_t aggregated_features[CONFIG_T::n_propagate];
+  
+      #pragma HLS PIPELINE
+  
+    DistInit:
+      for (unsigned ia = 0; ia < CONFIG_T::n_aggregators; ++ia) {
+        //#pragma HLS UNROLL
+        aggregator_distances[ia] = aggregator_distance_biases[ia];
       }
-      features[iout] = cache;
-    }
     
-    // dense_latency<data_T, res_T, typename CONFIG_T::aggregator_distance_config>(
-    //     data + iv * nfeat,
-    //     vertex_edge_weights,
-    //     aggregator_distance_weights,
-    //     aggregator_distance_biases);
-
-    AggregatorDistanceOuter: for (int iout = 0; iout < naggr; iout++) {
-      cache = aggregator_distance_biases[iout];
-      AggregatorDistanceInner: for (int iin = 0; iin < nfeat; iin++) {
-        cache += aggregator_distance_weights[iout * nfeat + iin] * data[iv * nfeat + iin];
+    AggrInit:
+      for (unsigned ip = 0; ip < CONFIG_T::n_propagate; ++ip) {
+        //#pragma HLS UNROLL
+        aggregated_features[ip] = input_transform_biases[ip];
       }
-      vertex_edge_weights[iout] = std::exp2f(-cache);
-    }
-
-    // for (int ia=0; ia<naggr; ia++){
-    //   vertex_edge_weights[ia] = std::pow(2., -vertex_edge_weights[ia]);
-    // }
-
-
-    // aggregate
-
-    AggregatorAccumOut: for (int ia=0; ia<naggr; ia++){
-      AggregatorAccumIn: for (int ip=0; ip<nprop; ip++){
-        // mean
-        aggregated[ia * nlatent + ip] += features[ip] * vertex_edge_weights[ia];
-        // max
-	//if(aggregated[(naggr + ia) * nlatent + ip] < (features[ip] * vertex_edge_weights[ia])){
-//		aggregated[(naggr + ia) * nlatent + ip] = features[ip] * vertex_edge_weights[ia]; 
-//	}
-        //aggregated[(naggr + ia) * nlatent + ip] = max(aggregated[(naggr + ia) * nlatent + ip], features[ip] * vertex_edge_weights[ia]);
+  
+    InputFeatures:
+      for (unsigned ix = 0; ix < CONFIG_T::n_in_features; ++ix) {
+        //#pragma HLS PIPELINE
+  
+        typename CONFIG_T::index_t data_index = vertex_offset + ix;
+  
+        for (unsigned ia = 0; ia < CONFIG_T::n_aggregators; ++ia) {
+          //#pragma HLS UNROLL
+          // keras Dense applies weights as K.dot(inputs, kernel) -> kernel is channels first
+          typename CONFIG_T::index_t weight_index = ix * CONFIG_T::n_aggregators + ia;
+          aggregator_distances[ia] += data[data_index] * aggregator_distance_weights[weight_index];
+        }
+  
+        for (unsigned ip = 0; ip < CONFIG_T::n_propagate; ++ip) {
+          //#pragma HLS UNROLL
+          typename CONFIG_T::index_t weight_index = ix * CONFIG_T::n_propagate + ip;
+          aggregated_features[ip] += data[data_index] * input_transform_weights[weight_index];
+        }
       }
-      // see above - do we really need to concatenate vertex_edge_weights to features?
-     // for (int iw=0; iw<naggr; iw++){
-        // mean
-       // aggregated[ia * nlatent + nprop + iw] += vertex_edge_weights[iw] * vertex_edge_weights[ia];
-        // max
-//	if(aggregated[(naggr + ia) * nlatent + nprop + iw] < (vertex_edge_weights[iw] * vertex_edge_weights[ia])){
-	
-  //      aggregated[(naggr + ia) * nlatent + nprop + iw] =  vertex_edge_weights[iw] * vertex_edge_weights[ia];
-//	}
-     // }
+  
+    EdgeWeights:
+      for (unsigned ia = 0; ia < CONFIG_T::n_aggregators; ++ia) {
+        //#pragma HLS UNROLL
+
+        typename CONFIG_T::edge_weight_t edge_weight = compute_garnet_edge_weight<CONFIG_T>(aggregator_distances[ia]);
+
+#ifdef GARNET_COLLAPSE
+        edge_weight_sums[ia] += edge_weight;
+#else
+        typename CONFIG_T::index_t index = iv * CONFIG_T::n_aggregators + ia;
+        edge_weights[index] = edge_weight;
+#endif
+        for (unsigned ip = 0; ip < CONFIG_T::n_propagate; ++ip) {
+          //#pragma HLS UNROLL
+          typename CONFIG_T::index_t il = ia * CONFIG_T::n_propagate + ip;
+          aggregation_sum[il] += edge_weight * aggregated_features[ip];
+        }
+      }
     }
   }
 
-  AggregatorMeanOut: for (int ia=0; ia<naggr; ia++){
-    AggregatorMeanLatent: for (int il=0; il<nlatent; il++){
-      aggregated[ia * nlatent + il] /= nvtx;
-    }
-  }
+#ifdef GARNET_COLLAPSE
+  for (int io = 0; io < CONFIG_T::n_filters; ++io) {
+    typename CONFIG_T::accum_t acc = 0.;
 
-  // typename CONFIG_T::accum_t updated_features[naggr * nlatent +  naggr];
-  typename CONFIG_T::accum_t updated_features[naggr * nlatent];
-
-  Vertices2: for(int iv=0; iv<nvtx; iv++){
-    // do we really need to concatenate all this?
-    typename CONFIG_T::accum_t* vertex_edge_weights = edge_weights + iv * naggr;
-
-    // return to vertices
-    FeatureReturnAggr: for (int ia=0; ia<naggr; ia++){
-      FeatureReturnProp: for (int ip=0; ip<nlatent; ip++){
-        updated_features[ia * nlatent + ip] = aggregated[ia * nlatent + ip] * vertex_edge_weights[ia];
+    for (unsigned ia = 0; ia < CONFIG_T::n_aggregators; ++ia) {
+      #pragma HLS UNROLL
+      typename CONFIG_T::edge_weight_t edge_weight_sum = edge_weight_sums[ia];
+  
+      for (unsigned ip = 0; ip < CONFIG_T::n_propagate; ++ip) {
+        #pragma HLS UNROLL
+        typename CONFIG_T::index_t il = ia * CONFIG_T::n_propagate + ip;
+        typename CONFIG_T::index_t weight_index = il * CONFIG_T::n_filters + io;
+          
+        acc += edge_weight_sum * aggregation_sum[il] * output_transform_weights[weight_index];
       }
     }
 
-    // // additional stuff to concatenate
-    // for (int ia=0; ia<naggr; ia++){
-    //   updated_features[ naggr * nlatent + ia] = vertex_edge_weights[ia];
-    // }
-    
-    // dense_latency<data_T, res_T, typename CONFIG_T::output_transform_config>(
-    //     updated_features,
-    //     res + iv * nfilt,
-    //     output_transform_weights,
-    //     output_transform_biases);
+    #if GARNET_COLLAPSE == 1
+    // mean
+    acc *= vnorm * vnorm;
+    acc += output_transform_biases[io] * nvtx[0] * vnorm;
+    #elif GARNET_COLLAPSE == 2
+    // sum
+    acc += output_transform_biases[io] * nvtx[0];
+    #endif
 
-    OutputTransformOuter: for (int iout = 0; iout < nfilt; iout++) {
-      cache = output_transform_biases[iout];
-      OutputTransformInner: for (int iin = 0; iin < naggr * nlatent; iin++) {
-        cache += output_transform_weights[iout * (naggr * nlatent) + iin] * updated_features[iin];
-      }
-      res[iv * nfilt + iout] = cache;
-    }
-
+    res[io] = acc;
   }
+#else
+  for (unsigned il = 0; il < n_latent; ++il) {
+    #pragma HLS UNROLL
+    aggregation_sum[il] *= vnorm;
+  }
+
+  for (unsigned iv = 0; iv < CONFIG_T::n_vertices; ++iv) {
+    if (iv < nvtx[0]) {
+      typename CONFIG_T::index_t vertex_offset = iv * CONFIG_T::n_filters;
+      typename CONFIG_T::index_t edge_weight_offset = iv * CONFIG_T::n_aggregators;
+
+      for (unsigned io = 0; io < CONFIG_T::n_filters; ++io) {
+        #pragma HLS UNROLL
+
+        typename CONFIG_T::accum_t acc = output_transform_biases[io];
+
+        for (unsigned ia = 0; ia < CONFIG_T::n_aggregators; ++ia) {
+          #pragma HLS UNROLL
+  
+          typename CONFIG_T::edge_weight_t edge_weight = edge_weights[edge_weight_offset + ia];
+  
+          for (unsigned ip = 0; ip < CONFIG_T::n_propagate; ++ip) {
+            #pragma HLS UNROLL
+            typename CONFIG_T::index_t il = ia * CONFIG_T::n_propagate + ip;
+            typename CONFIG_T::index_t weight_index = il * CONFIG_T::n_filters + io;
+          
+            acc += edge_weight * aggregation_sum[il] * output_transform_weights[weight_index];
+          }
+        }
+
+        res[vertex_offset + io] = acc;
+      }
+    }
+  }
+#endif
 }
 
 }

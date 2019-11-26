@@ -253,13 +253,13 @@ def write_test_bench(model):
         elif '//hls-fpga-machine-learning insert data' in line:
             newline = line
             for inp in model.get_input_variables():
-                input_str = '      ' + inp.definition_cpp() + ' = {};\n'
-                default_val = ','.join('in[{}]'.format(i) for i in range(inp.size()))
-                newline += input_str.format('{' + default_val + '}')
+                newline += '      ' + inp.definition_cpp() + ';\n'
+                newline += '      std::copy(in.begin(), in.end(), {});\n'.format(inp.cppname)
             for out in model.get_output_variables():
-                output_str = '      ' + out.definition_cpp() + ' = {};\n'
-                default_val = ','.join(str(o) for o in [0] * out.size())
-                newline += output_str.format('{' + default_val + '}')
+                # brace-init zeros the array out because we use std=c++0x
+                newline += '      ' + out.definition_cpp() + '{};\n'
+                # but we can still explicitly zero out if you want
+                newline += '      std::fill_n({}, {}, 0.);\n'.format(out.cppname, out.size())
         elif '//hls-fpga-machine-learning insert zero' in line:
             newline = line
             for inp in model.get_input_variables():
