@@ -172,7 +172,7 @@ function_templates = {
     'Concatenate'            : merge_function_template,
 }
 
-garnet_function_template = 'nnet::garnet<{input_t}, {output_t}, {config}>({input}, {nvtx}, {output}, {input_transform_weights}, {input_transform_biases}, {aggregator_distance_weights}, {aggregator_distance_biases}, {output_transform_weights}, {output_transform_biases});'
+garnet_function_template = 'nnet::garnet<{input_t}, {integer_input_t}, {output_t}, {config}>({input}, {nvtx}, {output}, {input_transform_weights}, {input_transform_biases}, {aggregator_distance_weights}, {aggregator_distance_biases}, {output_transform_weights}, {output_transform_biases});'
 function_templates['GarNet'] = garnet_function_template
 
 def get_config_template(kind):

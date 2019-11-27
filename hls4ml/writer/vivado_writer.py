@@ -252,9 +252,13 @@ def write_test_bench(model):
             newline = line.replace('myproject', model.config.get_project_name())
         elif '//hls-fpga-machine-learning insert data' in line:
             newline = line
+            newline += '      std::vector<float>::const_iterator in_begin = in.begin();\n'
+            newline += '      std::vector<float>::const_iterator in_end;\n'
             for inp in model.get_input_variables():
                 newline += '      ' + inp.definition_cpp() + ';\n'
-                newline += '      std::copy(in.begin(), in.end(), {});\n'.format(inp.cppname)
+                newline += '      in_end = in_begin + ({});\n'.format(inp.size_cpp())
+                newline += '      std::copy(in_begin, in_end, {});\n'.format(inp.cppname)
+                newline += '      in_begin = in_end;\n'
             for out in model.get_output_variables():
                 # brace-init zeros the array out because we use std=c++0x
                 newline += '      ' + out.definition_cpp() + '{};\n'
@@ -263,9 +267,8 @@ def write_test_bench(model):
         elif '//hls-fpga-machine-learning insert zero' in line:
             newline = line
             for inp in model.get_input_variables():
-                input_str = '    ' + inp.definition_cpp() + ' = {};\n'
-                default_val = ','.join(str(i) for i in [0] * inp.size())
-                newline += input_str.format('{' + default_val + '}')
+                newline += '    ' + inp.definition_cpp() + ';\n'
+                newline += '    std::fill_n({}, {}, 0.);\n'.format(inp.cppname, inp.size_cpp())
             for out in model.get_output_variables():
                 output_str = '    ' + out.definition_cpp() + ' = {};\n'
                 default_val = ','.join(str(o) for o in [0] * out.size())

@@ -666,7 +666,9 @@ class Input(Layer):
         if shape[0] is None:
             shape = shape[1:]
         dims = ['N_INPUT_{}_{}'.format(i, self.index) for i in range(1, len(shape) + 1)]
-        self.add_output_variable(shape, dims, var_name=self.name, type_name='input_t')
+        type_name = self.attributes.get('type_name', 'input_t')
+        precision = self.attributes.get('precision', None)
+        self.add_output_variable(shape, dims, var_name=self.name, type_name=type_name, precision=precision)
 
     def function_cpp(self):
         return None
@@ -801,6 +803,7 @@ class GarNet(Layer):
 
     def function_cpp(self):
         params = self._default_function_params()
+        params['integer_input_t'] = self.get_input_variable('input_2').type.name
         params['nvtx'] = self.get_input_variable(self.inputs[1]).name
         for dense_name in ['input_transform', 'aggregator_distance', 'output_transform']:
             params['%s_weights' % dense_name] = self.get_weights('%s_weights' % dense_name).name

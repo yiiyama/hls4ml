@@ -152,6 +152,9 @@ def keras_to_hls(yamlConfig):
         # Default one layer call
         if layer['class_name'] == 'InputLayer':
             layer['input_shape'] = keras_layer['config']['batch_input_shape'][1:]
+            if keras_layer['config']['dtype'] == 'int32':
+                layer['type_name'] = 'integer_input_t'
+                layer['precision'] = 'ap_int<32>'
             output_shape = keras_layer['config']['batch_input_shape'] # [None, 100, 7]
         elif 'Dense' in layer['class_name']:
             weights_shape = get_weights_shape(yamlConfig['KerasH5'], layer['name'])
