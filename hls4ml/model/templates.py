@@ -142,6 +142,8 @@ garnet_config_template = """struct config{index} : nnet::garnet_config {{
     static const unsigned n_aggregators = {n_aggregators};
     static const unsigned n_filters = {n_filters};
     static const unsigned n_propagate = {n_propagate};
+
+    static const unsigned reuse_factor = {reuse};
 }};
 """
 

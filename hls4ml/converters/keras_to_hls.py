@@ -341,6 +341,8 @@ def keras_to_hls(yamlConfig):
             layer['n_propagate'] = keras_layer['config']['n_propagate'] # number of latent features
             layer['collapse'] = keras_layer['config']['collapse']
 
+            layer['vertex_unroll_factor'] = 4
+
             if layer['collapse'] in ['mean', 'sum', 'max']:
                 output_shape = [input_shapes[0][0], layer['n_filters']]
             else:

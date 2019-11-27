@@ -105,7 +105,8 @@ def write_project_cpp(model):
             all_inputs = [i.cppname for i in model_inputs]
             all_outputs = [o.cppname for o in model_outputs]
             if model.config.get_config_value("IOType") == "io_parallel":
-                for i in model_inputs: newline += indent + '#pragma HLS ARRAY_RESHAPE variable={} complete dim=0 \n'.format(i.cppname)
+                #for i in model_inputs: newline += indent + '#pragma HLS ARRAY_RESHAPE variable={} complete dim=0 \n'.format(i.cppname)
+                for i in model_inputs: newline += indent + i.pragma + '\n'
                 for o in model_outputs: newline += indent + '#pragma HLS ARRAY_RESHAPE variable={} complete dim=0 \n'.format(o.cppname)
                 newline += indent + '#pragma HLS INTERFACE ap_vld port={},{} \n'.format(','.join(all_inputs), ','.join(all_outputs))
                 if model.config.model_strategy == 'Resource':

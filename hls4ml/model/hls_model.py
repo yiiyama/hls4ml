@@ -27,6 +27,8 @@ class HLSConfig(object):
         self.layer_type_compression = {}
         self.layer_name_compression = {}
 
+        self.layer_name_output_partitioning = {}
+
         self._parse_hls_config()
         self._validate_hls_config()
 
@@ -98,6 +100,13 @@ class HLSConfig(object):
 
         return compression
 
+    def get_output_partitioning(self, layer):
+        partitioning = self.layer_name_output_partitioning.get(layer.name.lower())
+        if partitioning is None:
+            partitioning = 'auto'
+
+        return partitioning
+
     def _parse_hls_config(self):
         hls_config = self.config['HLSConfig']
         model_cfg = hls_config.get('Model')
@@ -157,6 +166,10 @@ class HLSConfig(object):
                 compression = layer_cfg.get('Compression')
                 if compression is not None:
                     self.layer_name_compression[layer_name.lower()] = bool(compression)
+
+                output_partitioning = layer_cfg.get('OutputPartitioning')
+                if output_partitioning is not None:
+                    self.layer_name_output_partitioning[layer_name.lower()] = output_partitioning
 
     def _validate_hls_config(self):
         use_resource = False
@@ -551,6 +564,9 @@ class Layer(object):
             precision, _ = self.model.config.get_precision(self, var='result')
 
         if pragma == 'auto':
+            pragma = self.model.config.get_output_partitioning(self)
+
+        if pragma == 'auto':
             if self.model.config.get_config_value('IOType') == 'io_serial':
                 pragma = 'stream'
             else:
@@ -776,6 +792,10 @@ class Conv2D(Layer):
 
 class GarNet(Layer):
     def initialize(self):
+        reuse_factor = self.model.config.get_reuse_factor(self)
+        if self.attributes['n_vertices'] % reuse_factor != 0:
+            raise Exception('GarNet vertex loop has no bound check; number of vertices must be divisible by the reuse factor (%d).' % reuse_factor)
+        
         if self.attributes['collapse']:
             shape = [self.attributes['n_filters']]
             dims = ['OUT_FEATURES_{}'.format(self.index)]
