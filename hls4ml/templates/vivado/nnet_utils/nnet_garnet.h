@@ -51,12 +51,93 @@ aggregation_sums_init(typename CONFIG_T::aggr_t aggregation_sums[CONFIG_T::n_agg
 }
 
 template<class CONFIG_T>
+inline typename std::enable_if<std::is_class<typename CONFIG_T::accum_t>::value>::type
+initialize_edge_weights_table(typename CONFIG_T::edge_weight_t edge_weights_table[])
+{
+  typedef ap_uint<CONFIG_T::distance_bitwidth> index_t;
+  typedef ap_fixed<CONFIG_T::distance_bitwidth, CONFIG_T::distance_bitwidth / 2, AP_RND, AP_SAT> rdistance_t;
+
+  unsigned const table_size = (1 << CONFIG_T::distance_bitwidth);
+
+  index_t index;
+  rdistance_t rdist;
+  typename CONFIG_T::accum_t distance;
+  
+  for (unsigned iw = 0; iw < table_size; ++iw) {
+    index = iw;
+    rdist.range(CONFIG_T::distance_bitwidth - 1, 0) = index.range(CONFIG_T::distance_bitwidth - 1, 0);
+    distance = rdist;
+    edge_weights_table[iw] = hls::pow(2., -distance);
+  }
+}
+
+template<class CONFIG_T>
+inline typename std::enable_if<not std::is_class<typename CONFIG_T::accum_t>::value>::type
+initialize_edge_weights_table(typename CONFIG_T::edge_weight_t edge_weights_table[])
+{
+  unsigned const table_size = (1 << CONFIG_T::distance_bitwidth);
+  double const step = 64. / table_size;
+
+  typename CONFIG_T::accum_t v = -32.;
+  for (unsigned iw = 0; iw < table_size; ++iw) {
+    edge_weights_table[iw] = std::pow(2., -v);
+    v += step;
+  }
+}
+
+template<class CONFIG_T>
+inline typename std::enable_if<std::is_class<typename CONFIG_T::accum_t>::value, typename CONFIG_T::edge_weight_t>::type
+get_edge_weight(typename CONFIG_T::accum_t distance, typename CONFIG_T::edge_weight_t edge_weights_table[])
+{
+  typedef ap_uint<CONFIG_T::distance_bitwidth> index_t;
+  typedef ap_fixed<CONFIG_T::distance_bitwidth, CONFIG_T::distance_bitwidth / 2, AP_RND, AP_SAT> rdistance_t;
+
+  index_t index;
+  rdistance_t rdist = distance;
+
+  index.range(CONFIG_T::distance_bitwidth - 1, 0) = rdist.range(CONFIG_T::distance_bitwidth - 1, 0);
+
+  return edge_weights_table[index];
+}
+
+template<class CONFIG_T>
+inline typename std::enable_if<not std::is_class<typename CONFIG_T::accum_t>::value, typename CONFIG_T::edge_weight_t>::type
+get_edge_weight(typename CONFIG_T::accum_t distance, typename CONFIG_T::edge_weight_t edge_weights_table[])
+{
+  unsigned const table_size = (1 << CONFIG_T::distance_bitwidth);
+  double const step = 64. / table_size;
+  
+  int index = (distance + 32.) / step;
+  if (index < 0)
+    index = 0;
+  else if (index >= table_size)
+    index = table_size - 1;
+
+  return edge_weights_table[index];
+}
+
+template<class CONFIG_T>
 inline typename CONFIG_T::edge_weight_t
 compute_garnet_edge_weight(typename CONFIG_T::accum_t distance)
 {
   #pragma HLS PIPELINE
-  typename CONFIG_T::edge_weight_t edge_weight = 1.;
-  return edge_weight >> static_cast<ap_int<24>>(hls::lround(static_cast<float>(distance)));
+  // typename CONFIG_T::edge_weight_t edge_weight = 1.;
+  // return edge_weight >> distance.to_int();
+
+#ifdef __SYNTHESIS__
+  typename CONFIG_T::edge_weight_t edge_weights_table[1 << CONFIG_T::distance_bitwidth];
+  #pragma HLS ARRAY_RESHAPE variable=edge_weights_table complete dim=1
+  bool initialized = false;
+#else
+  static typename CONFIG_T::edge_weight_t edge_weights_table[1 << CONFIG_T::distance_bitwidth];
+  static bool initialized = false;
+#endif
+  if (!initialized) {
+    initialize_edge_weights_table<CONFIG_T>(edge_weights_table);
+    initialized = true;
+  }
+
+  return get_edge_weight<CONFIG_T>(distance, edge_weights_table);
 }
 
 template<class data_T, class nvtx_T, class CONFIG_T>
@@ -178,6 +259,8 @@ set_output(
     #endif
 
     res[io] = aggr;
+
+    //std::cout << "res " << io << " = " << aggr << " -> " << res[io] << std::endl;
   }
 }
 
@@ -258,6 +341,7 @@ struct garnet_config
   static const unsigned n_aggregators = 4;
   static const unsigned n_filters = 4;
   static const unsigned n_propagate = 4;
+  static const unsigned distance_bitwidth = 10;
 
   // Optimization specs
   static const unsigned reuse_factor = 64;

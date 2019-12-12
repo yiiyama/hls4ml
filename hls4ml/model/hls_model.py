@@ -438,10 +438,14 @@ class WeightVariable(Variable):
         if 'int' in self.type.precision:
             self.precision_fmt = '%d'
         else:
-            precision_bits = re.search('.+<(.+?)>', self.type.precision).group(1).split(',')
-            decimal_bits = int(precision_bits[0]) - int(precision_bits[1])
-            decimal_spaces = int(np.floor(np.log10(2 ** decimal_bits - 1))) + 1
-            self.precision_fmt = '%.{}f'.format(decimal_spaces)
+            matches = re.search('.+<(.+?)>', self.type.precision)
+            if matches:
+                precision_bits = matches.group(1).split(',')
+                decimal_bits = int(precision_bits[0]) - int(precision_bits[1])
+                decimal_spaces = int(np.floor(np.log10(2 ** decimal_bits - 1))) + 1
+                self.precision_fmt = '%.{}f'.format(decimal_spaces)
+            else:
+                self.precision_fmt = '%f'
 
     def definition_cpp(self):
         return '{type} {name}[{size}]'.format(type=self.type.name, name=self.cppname, size=self.data_length)
@@ -842,6 +846,12 @@ class GarNet(Layer):
             params['collapse_def'] = '#define GARNET_COLLAPSE 1'
         else:
             params['collapse_def'] = ''
+        params['edge_weight_t'], type_name = self.model.config.get_precision(self, var='edge_weight')
+        if type_name == 'model_default_t':
+            params['edge_weight_t'] = 'ap_ufixed<64, 32>'
+        params['aggr_t'], type_name = self.model.config.get_precision(self, var='aggr')
+        if type_name == 'model_default_t':
+            params['aggr_t'] = 'ap_fixed<64, 24>'
 
         return self._config_template.format(**params)
 

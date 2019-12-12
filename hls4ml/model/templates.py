@@ -136,12 +136,15 @@ garnet_config_template = """struct config{index} : nnet::garnet_config {{
     typedef {aggregator_distance_biases_t} aggregator_distance_biases_t;
 
     typedef {accum_t} accum_t;
+    typedef {edge_weight_t} edge_weight_t;
+    typedef {aggr_t} aggr_t;
 
     static const unsigned n_vertices = {n_vertices};
     static const unsigned n_in_features = {n_in_features};
     static const unsigned n_aggregators = {n_aggregators};
     static const unsigned n_filters = {n_filters};
     static const unsigned n_propagate = {n_propagate};
+    static const unsigned distance_bitwidth = 10;
 
     static const unsigned reuse_factor = {reuse};
 }};
